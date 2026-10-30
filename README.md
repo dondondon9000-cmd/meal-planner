@@ -1,6 +1,6 @@
 # Hearth & Harvest
 
-Phone-first shared household meal planning with an enchanted-cottage visual system. The first usable release includes the weekly Hearth, an offline recipe shelf, diner-based serving scaling, explicit leftovers, a confirm-before-use pantry snapshot, multi-store shopping, a transparent Walmart search handoff, and household profiles.
+Phone-first shared household meal planning with an enchanted-cottage visual system. The first usable release includes the weekly Hearth, an offline recipe shelf, diner-based serving scaling, explicit leftovers, a confirm-before-use pantry snapshot with camera barcode scanning, multi-store shopping, a transparent Walmart search handoff, and household profiles.
 
 Production: https://hearth-and-harvest-household.vercel.app
 
@@ -27,6 +27,7 @@ The demo intentionally does not pretend to sync across devices. The interface la
 
 ## Optional providers
 
+- Barcode scanning uses the browser's camera (via `@zxing/browser`) and looks products up against [Open Food Facts](https://world.openfoodfacts.org/), a free, keyless, client-side product database. Items it can't find are shown with their raw barcode so you can type the name in manually.
 - `THEMEALDB_API_KEY`: optional server-side override for attributed, user-initiated recipe search. When unset, this private household app uses TheMealDB's published basic key `1`. Results link to their source, and the key never enters the browser.
 - `OPENAI_API_KEY`: optional server-side key for in-app AI recipe creation. AI drafts use structured output, are not stored by OpenAI through this request (`store: false`), and can be saved to the shared shelf like sourced recipes.
 - `OPENAI_RECIPE_MODEL`: optional model override; defaults to `gpt-5.4-mini`.

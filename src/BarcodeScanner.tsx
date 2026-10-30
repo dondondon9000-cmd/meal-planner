@@ -1,0 +1,63 @@
+import { useEffect, useRef, useState } from 'react'
+import { BrowserMultiFormatReader } from '@zxing/browser'
+import type { IScannerControls } from '@zxing/browser'
+import { Check, ScanBarcode, X } from 'lucide-react'
+import { lookupBarcode } from './barcode'
+
+type ScanEntry = { code: string; name: string; found: boolean }
+
+export function BarcodeScannerDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const controlsRef = useRef<IScannerControls | null>(null)
+  const busyRef = useRef(false)
+  const lastCodeRef = useRef<string | null>(null)
+  const [status, setStatus] = useState<'starting' | 'scanning' | 'denied'>('starting')
+  const [entries, setEntries] = useState<ScanEntry[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const reader = new BrowserMultiFormatReader()
+    reader.decodeFromConstraints({ video: { facingMode: 'environment' } }, videoRef.current ?? undefined, async (result) => {
+      if (cancelled || !result) return
+      const code = result.getText()
+      if (busyRef.current || code === lastCodeRef.current) return
+      busyRef.current = true
+      lastCodeRef.current = code
+      try {
+        const product = await lookupBarcode(code)
+        if (cancelled) return
+        if (product) {
+          onAdd(product.brand ? `${product.brand} ${product.name}` : product.name)
+          setEntries(current => [{ code, name: product.name, found: true }, ...current].slice(0, 6))
+        } else {
+          setEntries(current => [{ code, name: code, found: false }, ...current].slice(0, 6))
+        }
+      } catch {
+        if (!cancelled) setEntries(current => [{ code, name: code, found: false }, ...current].slice(0, 6))
+      } finally {
+        window.setTimeout(() => { busyRef.current = false; lastCodeRef.current = null }, 1500)
+      }
+    }).then(controls => { if (!cancelled) { controlsRef.current = controls; setStatus('scanning') } else controls.stop() })
+      .catch(() => { if (!cancelled) setStatus('denied') })
+    return () => { cancelled = true; controlsRef.current?.stop() }
+  }, [onAdd])
+
+  return <div className="modal-backdrop"><div className="dialog small barcode-dialog">
+    <button className="close" onClick={onClose}><X /></button>
+    <div className="dialog-icon"><ScanBarcode /></div>
+    <h2>Scan pantry barcodes</h2>
+    <p className="muted">Point your camera at a package barcode. Found items are added straight to your draft list below — keep scanning as many as you like.</p>
+    <div className="barcode-video-frame">
+      <video ref={videoRef} muted playsInline />
+      <div className="barcode-reticle" aria-hidden="true" />
+      {status === 'denied' && <div className="barcode-overlay"><p>Camera access was blocked. Allow camera permission for this site, then try again — or just type items in below.</p></div>}
+    </div>
+    {entries.length > 0 && <ul className="barcode-results">
+      {entries.map((entry, index) => <li key={`${entry.code}-${index}`} className={entry.found ? 'found' : 'missing'}>
+        {entry.found ? <Check size={15} /> : <X size={15} />}
+        <span>{entry.found ? entry.name : `Not found — code ${entry.code}. Type it in manually.`}</span>
+      </li>)}
+    </ul>}
+    <button className="button full" onClick={onClose}>Done scanning</button>
+  </div></div>
+}
