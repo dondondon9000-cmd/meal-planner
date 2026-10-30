@@ -1,0 +1,32 @@
+{
+  "name": "hearth-and-harvest",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "latest",
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/react": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/node": "latest",
+    "@vercel/node": "latest",
+    "jsdom": "latest",
+    "vercel": "latest",
+    "vitest": "latest"
+  }
+}

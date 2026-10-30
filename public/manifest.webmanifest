@@ -1,0 +1,10 @@
+{
+  "name": "Hearth & Harvest",
+  "short_name": "Hearth",
+  "description": "Shared household meal planning and shopping.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1b18",
+  "theme_color": "#142b24",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
