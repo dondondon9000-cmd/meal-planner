@@ -48,6 +48,8 @@ h3 { margin-bottom: .35rem; }
 main { width: min(1440px, calc(100% - 3rem)); margin: 0 auto; position: relative; z-index: 2; }
 .room-heading { display: flex; justify-content: space-between; align-items: end; gap: 1.5rem; padding: 3.5rem 0 2rem; }
 .eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: .72rem; color: var(--amber-light); margin-bottom: .55rem; font-weight: 700; }
+.pantry-hint { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; margin-top: .2rem; }
+.button.gold.pulse { animation: pulse 1.4s infinite; }
 .week-picker { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.035); }
 .week-picker button { border: 0; color: var(--ink); background: transparent; padding: .8rem; display: grid; place-items: center; }.week-picker span { min-width: 155px; text-align: center; }.week-picker b,.week-picker small { display: block; }.week-picker small { color: var(--muted); font-size: .72rem; margin-top: .15rem; }
 .card { background: linear-gradient(145deg, rgba(33, 64, 53, .9), rgba(17, 35, 29, .88)); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
