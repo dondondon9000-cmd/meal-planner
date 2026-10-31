@@ -1,6 +1,6 @@
 # Hearth & Harvest
 
-Phone-first shared household meal planning with an enchanted-cottage visual system. The first usable release includes the weekly Hearth, an offline recipe shelf, diner-based serving scaling, explicit leftovers, a confirm-before-use pantry snapshot with camera barcode scanning and per-item expiration/fullness tracking, multi-store shopping, a transparent Walmart search handoff, and household profiles.
+Phone-first shared household meal planning with an enchanted-cottage visual system. The first usable release includes the weekly Hearth, an offline recipe shelf, diner-based serving scaling, explicit leftovers, a confirm-before-use pantry snapshot with camera barcode scanning, per-item expiration/fullness tracking, and color-coded storage locations, multi-store shopping, a transparent Walmart search handoff, and household profiles.
 
 Production: https://hearth-and-harvest-household.vercel.app
 

@@ -54,7 +54,7 @@ export type MealSlot = {
 export type FullnessLevel = 'full' | 'three_quarters' | 'half' | 'quarter' | 'low'
 export type PantryItem = {
   id: string; name: string; amount: number; unit: string; confirmed: boolean
-  expiresAt?: string; fullness?: FullnessLevel; note?: string
+  expiresAt?: string; fullness?: FullnessLevel; note?: string; location?: string
 }
 
 export const fullnessLevels: FullnessLevel[] = ['full', 'three_quarters', 'half', 'quarter', 'low']
@@ -65,6 +65,41 @@ export const fullnessLabels: Record<FullnessLevel, string> = {
 export function isExpired(item: PantryItem, today = new Date()): boolean {
   if (!item.expiresAt) return false
   return item.expiresAt < today.toISOString().slice(0, 10)
+}
+
+export type LocationZone = 'Pantry' | 'Fridge' | 'Deep Freezer 1' | 'Deep Freezer 2' | 'Spice Shelf' | 'Cabinets'
+
+export const locationZones: LocationZone[] = ['Pantry', 'Fridge', 'Deep Freezer 1', 'Deep Freezer 2', 'Spice Shelf', 'Cabinets']
+
+export const locationZoneColors: Record<LocationZone, string> = {
+  'Pantry': '#c78637',
+  'Fridge': '#4f93c4',
+  'Deep Freezer 1': '#6f7fd8',
+  'Deep Freezer 2': '#8f6fd8',
+  'Spice Shelf': '#c05a4a',
+  'Cabinets': '#6f9c6b',
+}
+
+export const pantryLocationsByZone: Record<LocationZone, string[]> = {
+  'Pantry': ['Pantry Shelf 1', 'Pantry Shelf 2', 'Pantry Shelf 3', 'Pantry Shelf 4', 'Pantry Shelf 5', 'Pantry Floor'],
+  'Fridge': ['Fridge Shelf 1', 'Fridge Shelf 2', 'Fridge Shelf 3', 'Fridge Shelf 4', 'Fridge Shelf 5', 'Fridge Drawer 1', 'Fridge Drawer 2', 'Fridge Door Top', 'Fridge Door Bottom'],
+  'Deep Freezer 1': ['Deep Freezer 1'],
+  'Deep Freezer 2': ['Deep Freezer 2 Shelf 1', 'Deep Freezer 2 Shelf 2', 'Deep Freezer 2 Shelf 3', 'Deep Freezer 2 Shelf 4', 'Deep Freezer 2 Shelf 5', 'Deep Freezer 2 Shelf 6'],
+  'Spice Shelf': ['Spice Shelf'],
+  'Cabinets': ['Cabinet 1', 'Cabinet 2'],
+}
+
+const locationZoneByLabel = new Map<string, LocationZone>(
+  locationZones.flatMap(zone => pantryLocationsByZone[zone].map(label => [label, zone] as const))
+)
+
+export function locationZoneOf(location?: string): LocationZone | undefined {
+  return location ? locationZoneByLabel.get(location) : undefined
+}
+
+export function locationColor(location?: string): string | undefined {
+  const zone = locationZoneOf(location)
+  return zone ? locationZoneColors[zone] : undefined
 }
 export type GroceryItem = Ingredient & { id: string; checked: boolean; review?: boolean; source: 'plan' | 'manual' | 'pet' }
 

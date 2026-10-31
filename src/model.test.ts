@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, matchRecipesToPantry, parseIngredientLine, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -82,5 +82,17 @@ describe('isExpired', () => {
   it('is false on and before the expiration date', () => {
     expect(isExpired({ ...item, expiresAt: '2020-06-01' }, new Date('2020-06-01'))).toBe(false)
     expect(isExpired({ ...item, expiresAt: '2020-12-01' }, new Date('2020-06-01'))).toBe(false)
+  })
+})
+
+describe('pantry locations', () => {
+  it('resolves a specific location to its zone and color', () => {
+    expect(locationZoneOf('Deep Freezer 2 Shelf 3')).toBe('Deep Freezer 2')
+    expect(locationColor('Deep Freezer 2 Shelf 3')).toBe(locationColor('Deep Freezer 2 Shelf 1'))
+    expect(locationZoneOf('Cabinet 2')).toBe('Cabinets')
+  })
+  it('returns undefined for an unset or unknown location', () => {
+    expect(locationZoneOf(undefined)).toBeUndefined()
+    expect(locationColor('Garage Shelf')).toBeUndefined()
   })
 })

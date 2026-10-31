@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
 import {
-  buildGroceryList, buildWeekDraft, days, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired, matchRecipesToPantry,
+  buildGroceryList, buildWeekDraft, days, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired,
+  locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone,
   mealKinds, parseIngredientLine, parsePantryEntry, seedMembers, seedRecipes, seedSlots,
   type GroceryItem, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
 } from './model'
@@ -348,6 +349,7 @@ function Recipes({ recipes, setRecipes, members, preferences, pantry, onDetail, 
 function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMissing, notify }: { pantry: PantryItem[]; setPantry: (value: PantryItem[] | ((r: PantryItem[]) => PantryItem[])) => void; recipes: Recipe[]; members: Member[]; onDetail: (recipe: Recipe) => void; onAdd: (recipe: Recipe) => void; onAddMissing: (recipe: Recipe, missing: Recipe['ingredients']) => void; notify: (s: string) => void }) {
   const [draft, setDraft] = useState<PantryItem[]>(pantry)
   const [entry, setEntry] = useState('')
+  const [search, setSearch] = useState('')
   const [scanning, setScanning] = useState(false)
   const [scanningBarcode, setScanningBarcode] = useState(false)
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null)
@@ -357,6 +359,8 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const addFromBarcode = (name: string) => setDraft(current => [...current, parsePantryEntry(name)])
   const saveItemDetails = (id: string, patch: Partial<PantryItem>) => setDraft(all => all.map(x => x.id === id ? { ...x, ...patch } : x))
   const clearExpired = () => { setDraft(all => all.filter(item => !isExpired(item))); notify('Expired items removed from the draft') }
+  const updateItem = (id: string, patch: Partial<PantryItem>) => setDraft(all => all.map(x => x.id === id ? { ...x, ...patch } : x))
+  const deleteItem = (id: string) => setDraft(all => all.filter(x => x.id !== id))
   const addText = () => {
     const parts = entry.split(',').map(x => x.trim()).filter(Boolean)
     setDraft(current => [...current, ...parts.map(parsePantryEntry)]); setEntry('')
@@ -364,31 +368,71 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const photoDraft = () => {
     setScanning(true); window.setTimeout(() => { setDraft(current => [...current, { id: crypto.randomUUID(), name: 'yellow onion', amount: 2, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'eggs', amount: 8, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'cheddar', amount: 6, unit: 'oz', confirmed: false }]); setScanning(false); notify('Demo draft is ready for your review') }, 1100)
   }
+
+  const term = search.trim().toLowerCase()
+  const visible = draft.filter(item => !term || item.name.toLowerCase().includes(term) || (item.location || '').toLowerCase().includes(term))
+  const groups: { label: string; color?: string; items: PantryItem[] }[] = [
+    ...locationZones.map(zone => ({ label: zone, color: locationZoneColors[zone], items: visible.filter(item => locationZoneOf(item.location) === zone) })),
+    { label: 'Unassigned location', items: visible.filter(item => !locationZoneOf(item.location)) },
+  ].filter(group => group.items.length)
+
   return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div className="pantry-shelves" aria-hidden="true"><span>◒</span><span>▥</span><span>◉</span><span>▤</span></div><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
     {scanningBarcode && <Suspense fallback={<div className="modal-backdrop"><div className="dialog small barcode-dialog"><p className="muted">Loading scanner…</p></div></div>}><BarcodeScannerDialog onClose={() => setScanningBarcode(false)} onAdd={addFromBarcode} /></Suspense>}
-    <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set an expiration date or how full it is.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
+    <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
-      <div className="quick-entry"><input value={entry} onChange={e => setEntry(e.target.value)} onKeyDown={e => e.key === 'Enter' && addText()} placeholder="Try: rice, 2 onions, 1½ cups broth" /><button onClick={addText}><Plus /></button></div><div className="inventory-list">{draft.map(item => { const expired = isExpired(item); return <div className={`${item.confirmed ? 'confirmed' : ''} ${expired ? 'expired' : ''}`.trim()} key={item.id}>
-        <div className="pantry-item-row"><button className="check-button" onClick={() => setDraft(all => all.map(x => x.id === item.id ? { ...x, confirmed: !x.confirmed } : x))}>{item.confirmed && <Check size={15} />}</button><input value={item.name} onChange={e => setDraft(all => all.map(x => x.id === item.id ? { ...x, name: e.target.value } : x))} /><input className="qty" type="number" value={item.amount} min="0" step="0.125" onChange={e => setDraft(all => all.map(x => x.id === item.id ? { ...x, amount: Number(e.target.value) } : x))} /><select value={item.unit} onChange={e => setDraft(all => all.map(x => x.id === item.id ? { ...x, unit: e.target.value } : x))}><option>each</option><option>cup</option><option>tbsp</option><option>tsp</option><option>can</option><option>oz</option><option>lb</option><option>clove</option><option>package</option><option>bag</option></select><button className="plain-icon" aria-label={`Details for ${item.name}`} onClick={() => setEditingItem(item)}><NotebookPen size={16} /></button><button className="plain-icon" onClick={() => setDraft(all => all.filter(x => x.id !== item.id))}><Trash2 size={17} /></button></div>
-        {(item.fullness || item.expiresAt || item.note) && <div className="pantry-item-meta">
-          {item.fullness && <span className="pantry-badge">{fullnessLabels[item.fullness]}</span>}
-          {item.expiresAt && <span className={`pantry-badge ${expired ? 'expired' : ''}`.trim()}>{expired && <AlertTriangle size={12} />} {expired ? 'Expired' : 'Exp'} {item.expiresAt}</span>}
-          {item.note && <span className="pantry-badge">{item.note}</span>}
-        </div>}
-      </div> })}</div><div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
+      <div className="quick-entry"><input value={entry} onChange={e => setEntry(e.target.value)} onKeyDown={e => e.key === 'Enter' && addText()} placeholder="Try: rice, 2 onions, 1½ cups broth" /><button onClick={addText}><Plus /></button></div>
+      <label className="search-field pantry-search"><Search size={18} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search this pantry by name or location" /></label>
+      {groups.map(group => <div className="pantry-group" key={group.label}>
+        <h3 className="pantry-group-title" style={group.color ? { color: group.color } : undefined}>{group.label}<span>{group.items.length}</span></h3>
+        <div className="inventory-list">{group.items.map(item => <PantryRow key={item.id} item={item}
+          onToggleConfirmed={() => updateItem(item.id, { confirmed: !item.confirmed })}
+          onChangeName={name => updateItem(item.id, { name })}
+          onChangeAmount={amount => updateItem(item.id, { amount })}
+          onChangeUnit={unit => updateItem(item.id, { unit })}
+          onEdit={() => setEditingItem(item)}
+          onDelete={() => deleteItem(item.id)} />)}</div>
+      </div>)}
+      {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
+      <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
     {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onClose={() => setEditingItem(null)} />}</>
+}
+
+function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onChangeUnit, onEdit, onDelete }: {
+  item: PantryItem; onToggleConfirmed: () => void; onChangeName: (name: string) => void; onChangeAmount: (amount: number) => void
+  onChangeUnit: (unit: string) => void; onEdit: () => void; onDelete: () => void
+}) {
+  const expired = isExpired(item)
+  const color = locationColor(item.location)
+  return <div className={`${item.confirmed ? 'confirmed' : ''} ${expired ? 'expired' : ''}`.trim()} style={color ? { borderLeftColor: color, borderLeftWidth: 4 } : undefined}>
+    <div className="pantry-item-row">
+      <button className="check-button" onClick={onToggleConfirmed}>{item.confirmed && <Check size={15} />}</button>
+      <input value={item.name} onChange={e => onChangeName(e.target.value)} />
+      <input className="qty" type="number" value={item.amount} min="0" step="0.125" onChange={e => onChangeAmount(Number(e.target.value))} />
+      <select value={item.unit} onChange={e => onChangeUnit(e.target.value)}><option>each</option><option>cup</option><option>tbsp</option><option>tsp</option><option>can</option><option>oz</option><option>lb</option><option>clove</option><option>package</option><option>bag</option></select>
+      <button className="plain-icon" aria-label={`Details for ${item.name}`} onClick={onEdit}><NotebookPen size={16} /></button>
+      <button className="plain-icon" onClick={onDelete}><Trash2 size={17} /></button>
+    </div>
+    {(item.fullness || item.expiresAt || item.note || item.location) && <div className="pantry-item-meta">
+      {item.location && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{item.location}</span>}
+      {item.fullness && <span className="pantry-badge">{fullnessLabels[item.fullness]}</span>}
+      {item.expiresAt && <span className={`pantry-badge ${expired ? 'expired' : ''}`.trim()}>{expired && <AlertTriangle size={12} />} {expired ? 'Expired' : 'Exp'} {item.expiresAt}</span>}
+      {item.note && <span className="pantry-badge">{item.note}</span>}
+    </div>}
+  </div>
 }
 
 function PantryItemDialog({ item, onSave, onClose }: { item: PantryItem; onSave: (patch: Partial<PantryItem>) => void; onClose: () => void }) {
   const [expiresAt, setExpiresAt] = useState(item.expiresAt || '')
   const [fullness, setFullness] = useState<string>(item.fullness || '')
+  const [location, setLocation] = useState(item.location || '')
   const [note, setNote] = useState(item.note || '')
-  const save = () => { onSave({ expiresAt: expiresAt || undefined, fullness: (fullness || undefined) as PantryItem['fullness'], note: note.trim() || undefined }); onClose() }
+  const save = () => { onSave({ expiresAt: expiresAt || undefined, fullness: (fullness || undefined) as PantryItem['fullness'], location: location || undefined, note: note.trim() || undefined }); onClose() }
   return <div className="modal-backdrop"><div className="dialog small">
     <button className="close" onClick={onClose}><X /></button>
     <div className="dialog-icon"><NotebookPen /></div>
     <p className="eyebrow">Pantry item</p>
     <h2>{item.name}</h2>
+    <label>Location<select value={location} onChange={e => setLocation(e.target.value)}><option value="">Not specified</option>{locationZones.map(zone => <optgroup key={zone} label={zone}>{pantryLocationsByZone[zone].map(loc => <option key={loc} value={loc}>{loc}</option>)}</optgroup>)}</select></label>
     <label>How much is left?<select value={fullness} onChange={e => setFullness(e.target.value)}><option value="">Not specified</option>{fullnessLevels.map(level => <option key={level} value={level}>{fullnessLabels[level]}</option>)}</select></label>
     <label>Expiration date<input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /></label>
     <label>Note<textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Opened, for taco night, etc." /></label>
