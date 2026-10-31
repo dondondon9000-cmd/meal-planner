@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from 'react'
 import {
   AlertTriangle, Archive, BookOpen, Boxes, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
-  ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, Heart, Home, Leaf, ListChecks,
+  ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, GripVertical, Heart, Home, Leaf, ListChecks,
   MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
   ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, Users, WandSparkles, X,
 } from 'lucide-react'
@@ -358,6 +358,10 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const [scanning, setScanning] = useState(false)
   const [scanningBarcode, setScanningBarcode] = useState(false)
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null)
+  const [browseZone, setBrowseZone] = useState<LocationZone | null>(null)
+  const [browseLocation, setBrowseLocation] = useState<string | null>(null)
+  const [placingItemId, setPlacingItemId] = useState<string | null>(null)
+  const [drag, setDrag] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
   const matches = matchRecipesToPantry(recipes, draft, members).filter(match => !match.conflict).slice(0, 3)
   const isDirty = JSON.stringify(draft) !== JSON.stringify(pantry)
   const expiredCount = draft.filter(item => isExpired(item)).length
@@ -374,6 +378,33 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     setScanning(true); window.setTimeout(() => { setDraft(current => [...current, { id: crypto.randomUUID(), name: 'yellow onion', amount: 2, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'eggs', amount: 8, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'cheddar', amount: 6, unit: 'oz', confirmed: false }]); setScanning(false); notify('Demo draft is ready for your review') }, 1100)
   }
 
+  const openZone = (z: LocationZone) => { setBrowseZone(z); setBrowseLocation(pantryLocationsByZone[z].length === 1 ? pantryLocationsByZone[z][0] : null) }
+  const closeBrowser = () => { setBrowseZone(null); setBrowseLocation(null); setPlacingItemId(null) }
+  const pickLocation = (loc: string) => {
+    if (placingItemId) { updateItem(placingItemId, { location: loc }); notify(`Moved to ${loc}`); closeBrowser() }
+    else setBrowseLocation(loc)
+  }
+  const startDrag = (item: PantryItem, x: number, y: number) => setDrag({ id: item.id, name: item.name, x, y })
+  const moveDrag = (x: number, y: number) => {
+    setDrag(current => current ? { ...current, x, y } : current)
+    if (document.elementFromPoint(x, y)?.closest('[data-zone]')) return
+    const edge = 70
+    if (y < edge) window.scrollBy(0, -16)
+    else if (y > window.innerHeight - edge) window.scrollBy(0, 16)
+  }
+  const endDrag = (x: number, y: number) => {
+    setDrag(current => {
+      if (!current) return null
+      const zoneAttr = (document.elementFromPoint(x, y)?.closest('[data-zone]') as HTMLElement | null)?.dataset.zone as LocationZone | undefined
+      if (zoneAttr) {
+        const locs = pantryLocationsByZone[zoneAttr]
+        if (locs.length === 1) { updateItem(current.id, { location: locs[0] }); notify(`Moved to ${locs[0]}`) }
+        else { setPlacingItemId(current.id); openZone(zoneAttr) }
+      }
+      return null
+    })
+  }
+
   const term = search.trim().toLowerCase()
   const visible = draft.filter(item => !term || item.name.toLowerCase().includes(term) || (item.location || '').toLowerCase().includes(term))
   const groups: { label: string; color?: string; items: PantryItem[] }[] = [
@@ -381,85 +412,89 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     { label: 'Unassigned location', items: visible.filter(item => !locationZoneOf(item.location)) },
   ].filter(group => group.items.length)
 
-  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div><p className="eyebrow">Browse your kitchen</p><h2>Tap a spot to see what's there</h2></div><LocationBrowser draft={draft} onUpdateItem={updateItem} onDeleteItem={deleteItem} onOpenDetails={setEditingItem} /><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
+  const renderRow = (item: PantryItem) => <PantryRow key={item.id} item={item}
+    onToggleConfirmed={() => updateItem(item.id, { confirmed: !item.confirmed })}
+    onChangeName={name => updateItem(item.id, { name })}
+    onChangeAmount={amount => updateItem(item.id, { amount })}
+    onChangeUnit={unit => updateItem(item.id, { unit })}
+    onEdit={() => setEditingItem(item)}
+    onDragStart={(x, y) => startDrag(item, x, y)}
+    onDragMove={moveDrag}
+    onDragEnd={endDrag} />
+
+  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div><p className="eyebrow">Browse your kitchen</p><h2>Tap a spot to see what's there — or drag an item onto one</h2></div><LocationBrowser draft={draft} zone={browseZone} location={browseLocation} placingItemId={placingItemId} dragActive={Boolean(drag)} onOpenZone={openZone} onPickLocation={pickLocation} onBackToZone={() => setBrowseLocation(null)} onClose={closeBrowser} renderRow={renderRow} /><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
     {scanningBarcode && <Suspense fallback={<div className="modal-backdrop"><div className="dialog small barcode-dialog"><p className="muted">Loading scanner…</p></div></div>}><BarcodeScannerDialog onClose={() => setScanningBarcode(false)} onAdd={addFromBarcode} /></Suspense>}
-    <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
+    <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is — or drag the grip handle onto a spot in "Browse your kitchen" above.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
       <div className="quick-entry"><input value={entry} onChange={e => setEntry(e.target.value)} onKeyDown={e => e.key === 'Enter' && addText()} placeholder="Try: rice, 2 onions, 1½ cups broth" /><button onClick={addText}><Plus /></button></div>
       <label className="search-field pantry-search"><Search size={18} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search this pantry by name or location" /></label>
       {groups.map(group => <div className="pantry-group" key={group.label}>
         <h3 className="pantry-group-title" style={group.color ? { color: group.color } : undefined}>{group.label}<span>{group.items.length}</span></h3>
-        <div className="inventory-list">{group.items.map(item => <PantryRow key={item.id} item={item}
-          onToggleConfirmed={() => updateItem(item.id, { confirmed: !item.confirmed })}
-          onChangeName={name => updateItem(item.id, { name })}
-          onChangeAmount={amount => updateItem(item.id, { amount })}
-          onChangeUnit={unit => updateItem(item.id, { unit })}
-          onEdit={() => setEditingItem(item)}
-          onDelete={() => deleteItem(item.id)} />)}</div>
+        <div className="inventory-list">{group.items.map(renderRow)}</div>
       </div>)}
       {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
       <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
-    {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onClose={() => setEditingItem(null)} />}</>
+    {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onDelete={() => { deleteItem(editingItem.id); setEditingItem(null) }} onClose={() => setEditingItem(null)} />}
+    {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}><GripVertical size={14} />{drag.name}</div>}</>
 }
 
-function LocationBrowser({ draft, onUpdateItem, onDeleteItem, onOpenDetails }: {
-  draft: PantryItem[]; onUpdateItem: (id: string, patch: Partial<PantryItem>) => void; onDeleteItem: (id: string) => void; onOpenDetails: (item: PantryItem) => void
+function LocationBrowser({ draft, zone, location, placingItemId, dragActive, onOpenZone, onPickLocation, onBackToZone, onClose, renderRow }: {
+  draft: PantryItem[]; zone: LocationZone | null; location: string | null; placingItemId: string | null; dragActive: boolean
+  onOpenZone: (zone: LocationZone) => void; onPickLocation: (location: string) => void; onBackToZone: () => void; onClose: () => void
+  renderRow: (item: PantryItem) => ReactElement
 }) {
-  const [zone, setZone] = useState<LocationZone | null>(null)
-  const [location, setLocation] = useState<string | null>(null)
   const countAt = (loc: string) => draft.filter(item => item.location === loc).length
   const countIn = (z: LocationZone) => draft.filter(item => locationZoneOf(item.location) === z).length
-  const openZone = (z: LocationZone) => { setZone(z); setLocation(pantryLocationsByZone[z].length === 1 ? pantryLocationsByZone[z][0] : null) }
-  const closeAll = () => { setZone(null); setLocation(null) }
   const itemsHere = location ? draft.filter(item => item.location === location) : []
+  const placingName = placingItemId ? draft.find(item => item.id === placingItemId)?.name : null
 
   return <>
     <div className="zone-grid">{locationZones.map(z => { const Icon = zoneIcons[z]; const count = countIn(z); return (
-      <button key={z} className="zone-tile" style={{ '--zone-color': locationZoneColors[z] } as CSSProperties} onClick={() => openZone(z)}>
+      <button key={z} data-zone={z} className={`zone-tile ${dragActive ? 'drag-active' : ''}`.trim()} style={{ '--zone-color': locationZoneColors[z] } as CSSProperties} onClick={() => onOpenZone(z)}>
         <Icon size={22} /><b>{z}</b><span>{count} {count === 1 ? 'item' : 'items'}</span>
       </button>
     ) })}</div>
 
     {zone && !location && <div className="modal-backdrop"><div className="dialog small">
-      <button className="close" onClick={() => setZone(null)}><X /></button>
+      <button className="close" onClick={onClose}><X /></button>
       <p className="eyebrow">{zone}</p><h2>Pick a spot</h2>
-      <div className="location-grid">{pantryLocationsByZone[zone].map(loc => <button key={loc} className="location-tile" style={{ '--zone-color': locationZoneColors[zone] } as CSSProperties} onClick={() => setLocation(loc)}>
+      {placingName && <p className="placing-note">Placing <b>{placingName}</b> — tap where it goes.</p>}
+      <div className="location-grid">{pantryLocationsByZone[zone].map(loc => <button key={loc} className="location-tile" style={{ '--zone-color': locationZoneColors[zone] } as CSSProperties} onClick={() => onPickLocation(loc)}>
         <span>{loc.replace(zone, '').trim() || loc}</span><small>{countAt(loc)} {countAt(loc) === 1 ? 'item' : 'items'}</small>
       </button>)}</div>
     </div></div>}
 
-    {zone && location && <div className="modal-backdrop"><div className="dialog location-items-dialog">
-      <button className="close" onClick={closeAll}><X /></button>
+    {zone && location && !placingItemId && <div className="modal-backdrop"><div className="dialog location-items-dialog">
+      <button className="close" onClick={onClose}><X /></button>
       <p className="eyebrow">{zone}</p><h2>{location}</h2>
       <div className="inventory-list">
-        {itemsHere.map(item => <PantryRow key={item.id} item={item}
-          onToggleConfirmed={() => onUpdateItem(item.id, { confirmed: !item.confirmed })}
-          onChangeName={name => onUpdateItem(item.id, { name })}
-          onChangeAmount={amount => onUpdateItem(item.id, { amount })}
-          onChangeUnit={unit => onUpdateItem(item.id, { unit })}
-          onEdit={() => onOpenDetails(item)}
-          onDelete={() => onDeleteItem(item.id)} />)}
-        {!itemsHere.length && <p className="muted">Nothing set to “{location}” yet — open an item's details and set its location here.</p>}
+        {itemsHere.map(renderRow)}
+        {!itemsHere.length && <p className="muted">Nothing set to “{location}” yet — open an item's details and set its location here, or drag one in.</p>}
       </div>
-      {pantryLocationsByZone[zone].length > 1 && <button className="button full" onClick={() => setLocation(null)}>Back to {zone}</button>}
+      {pantryLocationsByZone[zone].length > 1 && <button className="button full" onClick={onBackToZone}>Back to {zone}</button>}
     </div></div>}
   </>
 }
 
-function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onChangeUnit, onEdit, onDelete }: {
+function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onChangeUnit, onEdit, onDragStart, onDragMove, onDragEnd }: {
   item: PantryItem; onToggleConfirmed: () => void; onChangeName: (name: string) => void; onChangeAmount: (amount: number) => void
-  onChangeUnit: (unit: string) => void; onEdit: () => void; onDelete: () => void
+  onChangeUnit: (unit: string) => void; onEdit: () => void
+  onDragStart: (x: number, y: number) => void; onDragMove: (x: number, y: number) => void; onDragEnd: (x: number, y: number) => void
 }) {
   const expired = isExpired(item)
   const color = locationColor(item.location)
   return <div className={`${item.confirmed ? 'confirmed' : ''} ${expired ? 'expired' : ''}`.trim()} style={color ? { borderLeftColor: color, borderLeftWidth: 4 } : undefined}>
     <div className="pantry-item-row">
+      <button className="grip-handle" aria-label={`Move ${item.name} to a location`}
+        onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); onDragStart(e.clientX, e.clientY) }}
+        onPointerMove={e => onDragMove(e.clientX, e.clientY)}
+        onPointerUp={e => onDragEnd(e.clientX, e.clientY)}
+        onPointerCancel={e => onDragEnd(e.clientX, e.clientY)}><GripVertical size={16} /></button>
       <button className="check-button" onClick={onToggleConfirmed}>{item.confirmed && <Check size={15} />}</button>
       <input value={item.name} onChange={e => onChangeName(e.target.value)} />
       <input className="qty" type="number" value={item.amount} min="0" step="0.125" onChange={e => onChangeAmount(Number(e.target.value))} />
       <select value={item.unit} onChange={e => onChangeUnit(e.target.value)}><option>each</option><option>cup</option><option>tbsp</option><option>tsp</option><option>can</option><option>oz</option><option>lb</option><option>clove</option><option>package</option><option>bag</option></select>
       <button className="plain-icon" aria-label={`Details for ${item.name}`} onClick={onEdit}><NotebookPen size={16} /></button>
-      <button className="plain-icon" onClick={onDelete}><Trash2 size={17} /></button>
     </div>
     {(item.fullness || item.expiresAt || item.note || item.location) && <div className="pantry-item-meta">
       {item.location && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{item.location}</span>}
@@ -470,12 +505,13 @@ function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onCh
   </div>
 }
 
-function PantryItemDialog({ item, onSave, onClose }: { item: PantryItem; onSave: (patch: Partial<PantryItem>) => void; onClose: () => void }) {
+function PantryItemDialog({ item, onSave, onDelete, onClose }: { item: PantryItem; onSave: (patch: Partial<PantryItem>) => void; onDelete: () => void; onClose: () => void }) {
   const [expiresAt, setExpiresAt] = useState(item.expiresAt || '')
   const [fullness, setFullness] = useState<string>(item.fullness || '')
   const [location, setLocation] = useState(item.location || '')
   const [note, setNote] = useState(item.note || '')
   const save = () => { onSave({ expiresAt: expiresAt || undefined, fullness: (fullness || undefined) as PantryItem['fullness'], location: location || undefined, note: note.trim() || undefined }); onClose() }
+  const remove = () => { if (window.confirm(`Remove ${item.name} from your pantry draft?`)) onDelete() }
   return <div className="modal-backdrop"><div className="dialog small">
     <button className="close" onClick={onClose}><X /></button>
     <div className="dialog-icon"><NotebookPen /></div>
@@ -486,6 +522,7 @@ function PantryItemDialog({ item, onSave, onClose }: { item: PantryItem; onSave:
     <label>Expiration date<input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /></label>
     <label>Note<textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Opened, for taco night, etc." /></label>
     <button className="button gold full" onClick={save}>Save details</button>
+    <button className="button danger full" onClick={remove}><Trash2 size={17} /> Remove from pantry</button>
   </div></div>
 }
 
