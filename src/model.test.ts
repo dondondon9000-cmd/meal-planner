@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, findPantryItem, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -89,6 +89,18 @@ describe('parsePantryEntry', () => {
   it('defaults new items to full fullness', () => {
     expect(parsePantryEntry('2 cans black beans').fullness).toBe('full')
     expect(parsePantryEntry('spaghetti').fullness).toBe('full')
+  })
+})
+
+describe('findPantryItem', () => {
+  it('matches a confirmed pantry item by fuzzy name and skips unconfirmed ones', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'crushed tomatoes', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 2' },
+      { id: 'b', name: 'garlic', amount: 2, unit: 'clove', confirmed: false },
+    ]
+    expect(findPantryItem('tomatoes', pantry)?.id).toBe('a')
+    expect(findPantryItem('garlic', pantry)).toBeUndefined()
+    expect(findPantryItem('basil', pantry)).toBeUndefined()
   })
 })
 

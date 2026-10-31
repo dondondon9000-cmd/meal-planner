@@ -251,6 +251,11 @@ export function recipeConflicts(recipe: Recipe, members: Member[]) {
   return listed.some(allergy => [allergy, ...(allergyExpansion[allergy] || [])].some(term => ingredientText.includes(term)))
 }
 
+export function findPantryItem(ingredientName: string, pantry: PantryItem[]): PantryItem | undefined {
+  const target = normalizeName(ingredientName)
+  return pantry.find(item => item.confirmed && (normalizeName(item.name).includes(target) || target.includes(normalizeName(item.name))))
+}
+
 export type PantryMatch = { recipe: Recipe; matched: number; total: number; percent: number; missing: Ingredient[]; conflict: boolean }
 
 export function matchRecipesToPantry(recipes: Recipe[], pantry: PantryItem[], members: Member[]): PantryMatch[] {
