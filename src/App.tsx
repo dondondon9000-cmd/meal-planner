@@ -1,17 +1,22 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import {
-  AlertTriangle, Archive, BookOpen, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
-  ChefHat, Clock3, Download, ExternalLink, Flame, Heart, Home, Leaf, ListChecks,
-  MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, RotateCcw, ScanBarcode, Search, Settings2,
-  ShoppingBasket, Smartphone, Sparkles, Star, Trash2, Users, WandSparkles, X,
+  AlertTriangle, Archive, BookOpen, Boxes, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
+  ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, Heart, Home, Leaf, ListChecks,
+  MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
+  ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, Users, WandSparkles, X,
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
 import {
   buildGroceryList, buildWeekDraft, days, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired,
   locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone,
   mealKinds, parseIngredientLine, parsePantryEntry, seedMembers, seedRecipes, seedSlots,
-  type GroceryItem, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
+  type GroceryItem, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
 } from './model'
+
+const zoneIcons: Record<LocationZone, typeof Archive> = {
+  'Pantry': Archive, 'Fridge': Refrigerator, 'Deep Freezer 1': Snowflake,
+  'Deep Freezer 2': ThermometerSnowflake, 'Spice Shelf': FlaskConical, 'Cabinets': Boxes,
+}
 
 declare global {
   interface Document {
@@ -376,7 +381,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     { label: 'Unassigned location', items: visible.filter(item => !locationZoneOf(item.location)) },
   ].filter(group => group.items.length)
 
-  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div className="pantry-shelves" aria-hidden="true"><span>◒</span><span>▥</span><span>◉</span><span>▤</span></div><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
+  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div><p className="eyebrow">Browse your kitchen</p><h2>Tap a spot to see what's there</h2></div><LocationBrowser draft={draft} onUpdateItem={updateItem} onDeleteItem={deleteItem} onOpenDetails={setEditingItem} /><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
     {scanningBarcode && <Suspense fallback={<div className="modal-backdrop"><div className="dialog small barcode-dialog"><p className="muted">Loading scanner…</p></div></div>}><BarcodeScannerDialog onClose={() => setScanningBarcode(false)} onAdd={addFromBarcode} /></Suspense>}
     <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
@@ -395,6 +400,50 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
       {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
       <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
     {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onClose={() => setEditingItem(null)} />}</>
+}
+
+function LocationBrowser({ draft, onUpdateItem, onDeleteItem, onOpenDetails }: {
+  draft: PantryItem[]; onUpdateItem: (id: string, patch: Partial<PantryItem>) => void; onDeleteItem: (id: string) => void; onOpenDetails: (item: PantryItem) => void
+}) {
+  const [zone, setZone] = useState<LocationZone | null>(null)
+  const [location, setLocation] = useState<string | null>(null)
+  const countAt = (loc: string) => draft.filter(item => item.location === loc).length
+  const countIn = (z: LocationZone) => draft.filter(item => locationZoneOf(item.location) === z).length
+  const openZone = (z: LocationZone) => { setZone(z); setLocation(pantryLocationsByZone[z].length === 1 ? pantryLocationsByZone[z][0] : null) }
+  const closeAll = () => { setZone(null); setLocation(null) }
+  const itemsHere = location ? draft.filter(item => item.location === location) : []
+
+  return <>
+    <div className="zone-grid">{locationZones.map(z => { const Icon = zoneIcons[z]; const count = countIn(z); return (
+      <button key={z} className="zone-tile" style={{ '--zone-color': locationZoneColors[z] } as CSSProperties} onClick={() => openZone(z)}>
+        <Icon size={22} /><b>{z}</b><span>{count} {count === 1 ? 'item' : 'items'}</span>
+      </button>
+    ) })}</div>
+
+    {zone && !location && <div className="modal-backdrop"><div className="dialog small">
+      <button className="close" onClick={() => setZone(null)}><X /></button>
+      <p className="eyebrow">{zone}</p><h2>Pick a spot</h2>
+      <div className="location-grid">{pantryLocationsByZone[zone].map(loc => <button key={loc} className="location-tile" style={{ '--zone-color': locationZoneColors[zone] } as CSSProperties} onClick={() => setLocation(loc)}>
+        <span>{loc.replace(zone, '').trim() || loc}</span><small>{countAt(loc)} {countAt(loc) === 1 ? 'item' : 'items'}</small>
+      </button>)}</div>
+    </div></div>}
+
+    {zone && location && <div className="modal-backdrop"><div className="dialog location-items-dialog">
+      <button className="close" onClick={closeAll}><X /></button>
+      <p className="eyebrow">{zone}</p><h2>{location}</h2>
+      <div className="inventory-list">
+        {itemsHere.map(item => <PantryRow key={item.id} item={item}
+          onToggleConfirmed={() => onUpdateItem(item.id, { confirmed: !item.confirmed })}
+          onChangeName={name => onUpdateItem(item.id, { name })}
+          onChangeAmount={amount => onUpdateItem(item.id, { amount })}
+          onChangeUnit={unit => onUpdateItem(item.id, { unit })}
+          onEdit={() => onOpenDetails(item)}
+          onDelete={() => onDeleteItem(item.id)} />)}
+        {!itemsHere.length && <p className="muted">Nothing set to “{location}” yet — open an item's details and set its location here.</p>}
+      </div>
+      {pantryLocationsByZone[zone].length > 1 && <button className="button full" onClick={() => setLocation(null)}>Back to {zone}</button>}
+    </div></div>}
+  </>
 }
 
 function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onChangeUnit, onEdit, onDelete }: {
