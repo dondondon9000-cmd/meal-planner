@@ -102,6 +102,24 @@ describe('findPantryItem', () => {
     expect(findPantryItem('garlic', pantry)).toBeUndefined()
     expect(findPantryItem('basil', pantry)).toBeUndefined()
   })
+
+  it('does not treat an unrelated compound item as a match for its first word', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'carrot cake', amount: 1, unit: 'each', confirmed: true, location: 'Pantry Shelf 4' },
+      { id: 'b', name: 'garlic bread', amount: 1, unit: 'each', confirmed: true, location: 'Pantry Shelf 4' },
+    ]
+    expect(findPantryItem('carrots', pantry)).toBeUndefined()
+    expect(findPantryItem('garlic', pantry)).toBeUndefined()
+  })
+
+  it('still matches a qualified variant of the same food', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'yellow onion', amount: 2, unit: 'each', confirmed: true },
+      { id: 'b', name: 'roasted garlic', amount: 1, unit: 'clove', confirmed: true },
+    ]
+    expect(findPantryItem('onion', pantry)?.id).toBe('a')
+    expect(findPantryItem('garlic', pantry)?.id).toBe('b')
+  })
 })
 
 describe('pantry locations', () => {

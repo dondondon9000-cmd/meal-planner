@@ -192,6 +192,31 @@ export const seedSlots: MealSlot[] = [
 const singular = (unit: string) => unit.toLowerCase().replace(/s$/, '')
 export const normalizeName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ')
 
+function singularizeWord(word: string): string {
+  if (word.endsWith('ies') && word.length > 4) return `${word.slice(0, -3)}y`
+  if (word.endsWith('es') && word.length > 4) return word.slice(0, -2)
+  if (word.endsWith('s') && !word.endsWith('ss') && word.length > 3) return word.slice(0, -1)
+  return word
+}
+
+function headWord(name: string): string {
+  const words = normalizeName(name).split(' ').filter(Boolean)
+  return singularizeWord(words[words.length - 1] || '')
+}
+
+// Two food names are treated as the same ingredient only when they're an exact
+// match or share the same final (head) word once singularized - "onion" matches
+// "yellow onion" this way, but "carrot" does NOT match "carrot cake": the head
+// word of a compound like "carrot cake" is "cake", a different food entirely.
+// Plain substring matching used to conflate those, which produced wrong
+// pantry/location matches on the shopping list and recipe views.
+export function sameFoodName(a: string, b: string): boolean {
+  const na = normalizeName(a), nb = normalizeName(b)
+  if (na === nb) return true
+  const ha = headWord(a), hb = headWord(b)
+  return Boolean(ha) && ha === hb
+}
+
 const units = ['tablespoons', 'tablespoon', 'tbsp', 'teaspoons', 'teaspoon', 'tsp', 'cups', 'cup', 'ounces', 'ounce', 'oz', 'pounds', 'pound', 'lbs', 'lb', 'cans', 'can', 'cloves', 'clove', 'packages', 'package', 'bags', 'bag', 'heads', 'head', 'bunches', 'bunch', 'each']
 const unicodeFractions: Record<string, number> = { '¼': .25, '½': .5, '¾': .75, '⅓': 1 / 3, '⅔': 2 / 3, '⅛': .125, '⅜': .375, '⅝': .625, '⅞': .875 }
 
@@ -252,16 +277,15 @@ export function recipeConflicts(recipe: Recipe, members: Member[]) {
 }
 
 export function findPantryItem(ingredientName: string, pantry: PantryItem[]): PantryItem | undefined {
-  const target = normalizeName(ingredientName)
-  return pantry.find(item => item.confirmed && (normalizeName(item.name).includes(target) || target.includes(normalizeName(item.name))))
+  return pantry.find(item => item.confirmed && sameFoodName(item.name, ingredientName))
 }
 
 export type PantryMatch = { recipe: Recipe; matched: number; total: number; percent: number; missing: Ingredient[]; conflict: boolean }
 
 export function matchRecipesToPantry(recipes: Recipe[], pantry: PantryItem[], members: Member[]): PantryMatch[] {
-  const available = pantry.filter(item => item.confirmed).map(item => normalizeName(item.name))
+  const available = pantry.filter(item => item.confirmed)
   return recipes.map(recipe => {
-    const missing = recipe.ingredients.filter(ingredient => !available.some(name => name.includes(normalizeName(ingredient.name)) || normalizeName(ingredient.name).includes(name)))
+    const missing = recipe.ingredients.filter(ingredient => !available.some(item => sameFoodName(item.name, ingredient.name)))
     const total = recipe.ingredients.length
     const matched = total - missing.length
     return { recipe, matched, total, percent: total ? Math.round(matched / total * 100) : 0, missing, conflict: recipeConflicts(recipe, members) }
