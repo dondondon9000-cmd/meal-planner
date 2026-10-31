@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!apiKey) return res.status(503).json({ error: 'AI recipe creation needs an Anthropic API key added to the site', code: 'AI_NOT_CONFIGURED' })
 
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
-  const household = typeof req.body?.household === 'string' ? req.body.household.trim().slice(0, 600) : ''
+  const household = typeof req.body?.household === 'string' ? req.body.household.trim().slice(0, 1200) : ''
   if (prompt.length < 3 || prompt.length > 500) return res.status(400).json({ error: 'Describe the meal in 3 to 500 characters' })
 
   try {
@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_RECIPE_MODEL?.trim() || 'claude-haiku-5-5',
         max_tokens: 2000,
-        system: 'Create one practical, original home-cooking recipe. Treat allergies as hard exclusions. Use ordinary grocery-store ingredients, realistic numeric quantities, concise numbered instructions, and conservative food-safety guidance. Never claim an AI draft is guaranteed allergy-safe.',
+        system: 'Create one practical, original home-cooking recipe. Treat allergies as hard exclusions. Use ordinary grocery-store ingredients, realistic numeric quantities, concise numbered instructions, and conservative food-safety guidance. Never claim an AI draft is guaranteed allergy-safe. When the household context lists pantry items already on hand, prefer a recipe that makes good use of them (especially anything noted as expiring soon or already open) instead of requiring a full list of new ingredients, but do not force in pantry items that would make the dish worse.',
         messages: [{ role: 'user', content: `Meal request: ${prompt}\nHousehold context: ${household || 'No additional preferences supplied.'}` }],
         tools: [{ name: 'household_recipe', description: 'Return the generated recipe as structured data.', input_schema: recipeSchema }],
         tool_choice: { type: 'tool', name: 'household_recipe' },

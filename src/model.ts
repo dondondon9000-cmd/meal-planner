@@ -51,7 +51,21 @@ export type MealSlot = {
   leftoverFrom?: string
 }
 
-export type PantryItem = { id: string; name: string; amount: number; unit: string; confirmed: boolean }
+export type FullnessLevel = 'full' | 'three_quarters' | 'half' | 'quarter' | 'low'
+export type PantryItem = {
+  id: string; name: string; amount: number; unit: string; confirmed: boolean
+  expiresAt?: string; fullness?: FullnessLevel; note?: string
+}
+
+export const fullnessLevels: FullnessLevel[] = ['full', 'three_quarters', 'half', 'quarter', 'low']
+export const fullnessLabels: Record<FullnessLevel, string> = {
+  full: 'Full / new', three_quarters: 'Three-quarters', half: 'Half', quarter: 'Quarter', low: 'Low / almost gone',
+}
+
+export function isExpired(item: PantryItem, today = new Date()): boolean {
+  if (!item.expiresAt) return false
+  return item.expiresAt < today.toISOString().slice(0, 10)
+}
 export type GroceryItem = Ingredient & { id: string; checked: boolean; review?: boolean; source: 'plan' | 'manual' | 'pet' }
 
 export const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']

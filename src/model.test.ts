@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, formatAmount, matchRecipesToPantry, parseIngredientLine, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, matchRecipesToPantry, parseIngredientLine, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -68,5 +68,19 @@ describe('ingredient and recommendation helpers', () => {
     const draft = buildWeekDraft([nutRecipe, recipe], members, { cookingLimit: 45, budget: 'Flexible' }, [])
     expect(draft).toHaveLength(7)
     expect(draft.every(slot => slot.recipeId === 'r')).toBe(true)
+  })
+})
+
+describe('isExpired', () => {
+  const item: PantryItem = { id: 'p', name: 'milk', amount: 1, unit: 'each', confirmed: true }
+  it('is false when there is no expiration date', () => {
+    expect(isExpired(item)).toBe(false)
+  })
+  it('is true once the expiration date has passed', () => {
+    expect(isExpired({ ...item, expiresAt: '2020-01-01' }, new Date('2020-06-01'))).toBe(true)
+  })
+  it('is false on and before the expiration date', () => {
+    expect(isExpired({ ...item, expiresAt: '2020-06-01' }, new Date('2020-06-01'))).toBe(false)
+    expect(isExpired({ ...item, expiresAt: '2020-12-01' }, new Date('2020-06-01'))).toBe(false)
   })
 })
