@@ -361,7 +361,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const [browseZone, setBrowseZone] = useState<LocationZone | null>(null)
   const [browseLocation, setBrowseLocation] = useState<string | null>(null)
   const [placingItemId, setPlacingItemId] = useState<string | null>(null)
-  const [drag, setDrag] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
+  const [drag, setDrag] = useState<{ id: string; name: string; x: number; y: number; anchorX: number; anchorY: number } | null>(null)
   const matches = matchRecipesToPantry(recipes, draft, members).filter(match => !match.conflict).slice(0, 3)
   const isDirty = JSON.stringify(draft) !== JSON.stringify(pantry)
   const expiredCount = draft.filter(item => isExpired(item)).length
@@ -384,14 +384,8 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     if (placingItemId) { updateItem(placingItemId, { location: loc }); notify(`Moved to ${loc}`); closeBrowser() }
     else setBrowseLocation(loc)
   }
-  const startDrag = (item: PantryItem, x: number, y: number) => setDrag({ id: item.id, name: item.name, x, y })
-  const moveDrag = (x: number, y: number) => {
-    setDrag(current => current ? { ...current, x, y } : current)
-    if (document.elementFromPoint(x, y)?.closest('[data-zone]')) return
-    const edge = 70
-    if (y < edge) window.scrollBy(0, -16)
-    else if (y > window.innerHeight - edge) window.scrollBy(0, 16)
-  }
+  const startDrag = (item: PantryItem, x: number, y: number) => setDrag({ id: item.id, name: item.name, x, y, anchorX: x, anchorY: y })
+  const moveDrag = (x: number, y: number) => setDrag(current => current ? { ...current, x, y } : current)
   const endDrag = (x: number, y: number) => {
     setDrag(current => {
       if (!current) return null
@@ -435,7 +429,8 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
       {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
       <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
     {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onDelete={() => { deleteItem(editingItem.id); setEditingItem(null) }} onClose={() => setEditingItem(null)} />}
-    {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}><GripVertical size={14} />{drag.name}</div>}</>
+    {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}><GripVertical size={14} />{drag.name}</div>}
+    {drag && <QuickZoneMenu x={drag.anchorX} y={drag.anchorY} />}</>
 }
 
 function LocationBrowser({ draft, zone, location, placingItemId, dragActive, onOpenZone, onPickLocation, onBackToZone, onClose, renderRow }: {
@@ -474,6 +469,21 @@ function LocationBrowser({ draft, zone, location, placingItemId, dragActive, onO
       {pantryLocationsByZone[zone].length > 1 && <button className="button full" onClick={onBackToZone}>Back to {zone}</button>}
     </div></div>}
   </>
+}
+
+function QuickZoneMenu({ x, y }: { x: number; y: number }) {
+  const w = 252, h = 184, margin = 10
+  const left = Math.min(Math.max(x - w / 2, margin), window.innerWidth - w - margin)
+  const above = y - h - 18 > margin
+  const top = above ? y - h - 18 : Math.min(y + 18, window.innerHeight - h - margin)
+  return <div className="quick-zone-menu" style={{ left, top, width: w }}>
+    <p className="quick-zone-hint">Drag onto a spot</p>
+    <div className="quick-zone-grid">{locationZones.map(z => { const Icon = zoneIcons[z]; return (
+      <div key={z} data-zone={z} className="quick-zone-btn" style={{ '--zone-color': locationZoneColors[z] } as CSSProperties}>
+        <Icon size={17} /><span>{z}</span>
+      </div>
+    ) })}</div>
+  </div>
 }
 
 function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onChangeUnit, onEdit, onDragStart, onDragMove, onDragEnd }: {
