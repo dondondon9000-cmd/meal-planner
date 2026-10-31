@@ -13,7 +13,13 @@ export function BarcodeScannerDialog({ onClose, onAdd }: { onClose: () => void; 
   const lastCodeRef = useRef<string | null>(null)
   const [status, setStatus] = useState<'starting' | 'scanning' | 'denied'>('starting')
   const [entries, setEntries] = useState<ScanEntry[]>([])
+  const onAddRef = useRef(onAdd)
+  onAddRef.current = onAdd
 
+  // Deliberately empty deps: this starts the camera exactly once per dialog open.
+  // Re-running it on every parent re-render (e.g. the background sync poll firing
+  // every few seconds) would tear down and restart getUserMedia mid-scan, so any
+  // prop the loop needs goes through a ref instead of the dependency array.
   useEffect(() => {
     let cancelled = false
     const reader = new BrowserMultiFormatReader()
@@ -27,7 +33,7 @@ export function BarcodeScannerDialog({ onClose, onAdd }: { onClose: () => void; 
         const product = await lookupBarcode(code)
         if (cancelled) return
         if (product) {
-          onAdd(product.brand ? `${product.brand} ${product.name}` : product.name)
+          onAddRef.current(product.brand ? `${product.brand} ${product.name}` : product.name)
           setEntries(current => [{ code, name: product.name, found: true }, ...current].slice(0, 6))
         } else {
           setEntries(current => [{ code, name: code, found: false }, ...current].slice(0, 6))
@@ -40,7 +46,8 @@ export function BarcodeScannerDialog({ onClose, onAdd }: { onClose: () => void; 
     }).then(controls => { if (!cancelled) { controlsRef.current = controls; setStatus('scanning') } else controls.stop() })
       .catch(() => { if (!cancelled) setStatus('denied') })
     return () => { cancelled = true; controlsRef.current?.stop() }
-  }, [onAdd])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return <div className="modal-backdrop"><div className="dialog small barcode-dialog">
     <button className="close" onClick={onClose}><X /></button>
