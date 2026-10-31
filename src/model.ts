@@ -226,7 +226,7 @@ export function parseIngredientLine(line: string): Ingredient {
 
 export function parsePantryEntry(value: string): PantryItem {
   const ingredient = parseIngredientLine(value)
-  return { id: crypto.randomUUID(), name: ingredient.name, amount: ingredient.amount, unit: ingredient.unit, confirmed: false }
+  return { id: crypto.randomUUID(), name: ingredient.name, amount: ingredient.amount, unit: ingredient.unit, confirmed: false, fullness: 'full' }
 }
 
 export function formatAmount(value: number) {

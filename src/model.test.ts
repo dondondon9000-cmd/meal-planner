@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -82,6 +82,13 @@ describe('isExpired', () => {
   it('is false on and before the expiration date', () => {
     expect(isExpired({ ...item, expiresAt: '2020-06-01' }, new Date('2020-06-01'))).toBe(false)
     expect(isExpired({ ...item, expiresAt: '2020-12-01' }, new Date('2020-06-01'))).toBe(false)
+  })
+})
+
+describe('parsePantryEntry', () => {
+  it('defaults new items to full fullness', () => {
+    expect(parsePantryEntry('2 cans black beans').fullness).toBe('full')
+    expect(parsePantryEntry('spaghetti').fullness).toBe('full')
   })
 })
 

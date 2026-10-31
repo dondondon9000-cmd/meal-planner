@@ -375,7 +375,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     setDraft(current => [...current, ...parts.map(parsePantryEntry)]); setEntry('')
   }
   const photoDraft = () => {
-    setScanning(true); window.setTimeout(() => { setDraft(current => [...current, { id: crypto.randomUUID(), name: 'yellow onion', amount: 2, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'eggs', amount: 8, unit: 'each', confirmed: false }, { id: crypto.randomUUID(), name: 'cheddar', amount: 6, unit: 'oz', confirmed: false }]); setScanning(false); notify('Demo draft is ready for your review') }, 1100)
+    setScanning(true); window.setTimeout(() => { setDraft(current => [...current, { id: crypto.randomUUID(), name: 'yellow onion', amount: 2, unit: 'each', confirmed: false, fullness: 'full' }, { id: crypto.randomUUID(), name: 'eggs', amount: 8, unit: 'each', confirmed: false, fullness: 'full' }, { id: crypto.randomUUID(), name: 'cheddar', amount: 6, unit: 'oz', confirmed: false, fullness: 'full' }]); setScanning(false); notify('Demo draft is ready for your review') }, 1100)
   }
 
   const openZone = (z: LocationZone) => { setBrowseZone(z); setBrowseLocation(pantryLocationsByZone[z].length === 1 ? pantryLocationsByZone[z][0] : null) }
