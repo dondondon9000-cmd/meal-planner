@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, findPantryItem, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, findPantryItem, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, resolvePantryMatch, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -28,6 +28,15 @@ describe('buildGroceryList', () => {
     ]
     const list = buildGroceryList(slots, [recipe], pantry)
     expect(list.find(i => i.name === 'Carrot')?.amount).toBe(1)
+    expect(list.find(i => i.name === 'Broth')?.amount).toBe(2)
+  })
+
+  it('excludes an ingredient entirely when manually linked to a confirmed pantry item', () => {
+    const linkedRecipe: Recipe = { ...recipe, ingredients: [{ name: 'Carrot', amount: 4, unit: 'each', category: 'Produce', linkedPantryItemId: 'p1' }, recipe.ingredients[1]] }
+    const slots: MealSlot[] = [{ id: 'a', day: 0, kind: 'Dinner', recipeId: 'r', diners: ['1', '2', '3', '4'], servings: 4 }]
+    const pantry: PantryItem[] = [{ id: 'p1', name: 'schnucks sliced carrots', amount: 1, unit: 'can', confirmed: true }]
+    const list = buildGroceryList(slots, [linkedRecipe], pantry)
+    expect(list.find(i => i.name === 'Carrot')).toBeUndefined()
     expect(list.find(i => i.name === 'Broth')?.amount).toBe(2)
   })
 
@@ -164,5 +173,27 @@ describe('pantry locations', () => {
   it('returns undefined for an unset or unknown location', () => {
     expect(locationZoneOf(undefined)).toBeUndefined()
     expect(locationColor('Garage Shelf')).toBeUndefined()
+  })
+})
+
+describe('resolvePantryMatch', () => {
+  const pantry: PantryItem[] = [
+    { id: 'p1', name: 'schnucks sliced carrots', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 2' },
+    { id: 'p2', name: 'onion', amount: 1, unit: 'each', confirmed: true },
+  ]
+
+  it('prefers a manual link over automatic name matching', () => {
+    const ingredient = { name: 'carrots', amount: 1, unit: 'each', category: 'Produce', linkedPantryItemId: 'p1' }
+    expect(resolvePantryMatch(ingredient, pantry)?.id).toBe('p1')
+  })
+
+  it('falls back to automatic matching when there is no link', () => {
+    const ingredient = { name: 'onion', amount: 1, unit: 'each', category: 'Produce' }
+    expect(resolvePantryMatch(ingredient, pantry)?.id).toBe('p2')
+  })
+
+  it('falls back to automatic matching when the linked item no longer exists', () => {
+    const ingredient = { name: 'onion', amount: 1, unit: 'each', category: 'Produce', linkedPantryItemId: 'missing' }
+    expect(resolvePantryMatch(ingredient, pantry)?.id).toBe('p2')
   })
 })

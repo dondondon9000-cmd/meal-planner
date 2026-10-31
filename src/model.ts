@@ -17,6 +17,7 @@ export type Ingredient = {
   unit: string
   category: string
   store?: string
+  linkedPantryItemId?: string
 }
 
 export type Recipe = {
@@ -311,12 +312,24 @@ export function findPantryItem(ingredientName: string, pantry: PantryItem[]): Pa
   return pantry.find(item => item.confirmed && sameFoodName(item.name, ingredientName))
 }
 
+// Automatic name matching can't always tell two products apart (see
+// sameFoodName); an ingredient can carry an explicit linkedPantryItemId to
+// name an exact pantry item as a manual override, which this prefers before
+// falling back to the automatic match. The link is cleared if that pantry
+// item is gone or no longer confirmed.
+export function resolvePantryMatch(ingredient: Ingredient, pantry: PantryItem[]): PantryItem | undefined {
+  if (ingredient.linkedPantryItemId) {
+    const linked = pantry.find(item => item.id === ingredient.linkedPantryItemId && item.confirmed)
+    if (linked) return linked
+  }
+  return findPantryItem(ingredient.name, pantry)
+}
+
 export type PantryMatch = { recipe: Recipe; matched: number; total: number; percent: number; missing: Ingredient[]; conflict: boolean }
 
 export function matchRecipesToPantry(recipes: Recipe[], pantry: PantryItem[], members: Member[]): PantryMatch[] {
-  const available = pantry.filter(item => item.confirmed)
   return recipes.map(recipe => {
-    const missing = recipe.ingredients.filter(ingredient => !available.some(item => sameFoodName(item.name, ingredient.name)))
+    const missing = recipe.ingredients.filter(ingredient => !resolvePantryMatch(ingredient, pantry))
     const total = recipe.ingredients.length
     const matched = total - missing.length
     return { recipe, matched, total, percent: total ? Math.round(matched / total * 100) : 0, missing, conflict: recipeConflicts(recipe, members) }
@@ -349,6 +362,7 @@ export function buildGroceryList(slots: MealSlot[], recipes: Recipe[], pantry: P
     if (!recipe) continue
     const scale = slot.servings / recipe.servings
     for (const ingredient of recipe.ingredients) {
+      if (ingredient.linkedPantryItemId && pantry.some(item => item.id === ingredient.linkedPantryItemId && item.confirmed)) continue
       const name = normalizeName(ingredient.name)
       const unit = singular(ingredient.unit)
       const existing = needs.find(item => normalizeName(item.name) === name && singular(item.unit) === unit)

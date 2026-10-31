@@ -1,16 +1,16 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from 'react'
 import {
   AlertTriangle, Archive, BookOpen, Boxes, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
-  ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, GripVertical, Heart, Home, Leaf, ListChecks,
+  ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, GripVertical, Heart, Home, Leaf, Link2, ListChecks,
   MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
   ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, Users, WandSparkles, X,
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
 import {
   buildGroceryList, buildWeekDraft, days, findPantryItem, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired,
-  locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone,
+  locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone, resolvePantryMatch,
   mealKinds, parseIngredientLine, parsePantryEntry, seedMembers, seedRecipes, seedSlots,
-  type GroceryItem, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
+  type GroceryItem, type Ingredient, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
 } from './model'
 
 const zoneIcons: Record<LocationZone, typeof Archive> = {
@@ -596,17 +596,48 @@ function AddMealDialog({ target, recipes, members, selectedRecipe, setSelectedRe
 function RecipeDetail({ recipe, pantry, onClose, onAdd, onUpdate, onCooked }: { recipe: Recipe; pantry: PantryItem[]; onClose: () => void; onAdd: () => void; onUpdate: (patch: Partial<Recipe>) => void; onCooked: () => void }) {
   const [notes, setNotes] = useState(recipe.notes || '')
   const [cooking, setCooking] = useState(false)
-  if (cooking) return <CookingMode recipe={recipe} pantry={pantry} onClose={() => setCooking(false)} onFinished={() => { onCooked(); setCooking(false) }} />
-  return <div className="modal-backdrop"><div className="dialog recipe-dialog"><button className="close" onClick={onClose}><X /></button><div className={`detail-art ${recipe.imageUrl ? 'has-photo' : ''}`} style={{ background: `linear-gradient(135deg, ${recipe.color}, #14231d)` }}>{recipe.imageUrl ? <img src={recipe.imageUrl} alt={recipe.title} /> : <><span>{recipe.title.split(' ').slice(0, 2).map(w => w[0]).join('')}</span><i /></>}</div><div className="detail-heading"><p className="eyebrow">{recipe.sourceType}</p><h2>{recipe.title}</h2><p>{recipe.description}</p><div><span><Clock3 size={15} /> {recipe.minutes} min</span><span><Users size={15} /> {recipe.servings} servings</span><span>{recipe.cost}</span>{Boolean(recipe.cookedCount) && <span><RotateCcw size={14} /> Cooked {recipe.cookedCount}</span>}</div></div><div className="rating-row"><span>Household rating</span><div>{[1, 2, 3, 4, 5].map(star => <button key={star} className={star <= (recipe.rating || 0) ? 'active' : ''} onClick={() => onUpdate({ rating: star })} aria-label={`${star} stars`}><Star size={21} fill={star <= (recipe.rating || 0) ? 'currentColor' : 'none'} /></button>)}</div></div><div className="recipe-columns"><section><h3>Ingredients</h3><p className="ingredient-summary">{recipe.ingredients.filter(i => findPantryItem(i.name, pantry)).length} of {recipe.ingredients.length} on hand</p><ul className="ingredient-list">{recipe.ingredients.map(i => { const match = findPantryItem(i.name, pantry); const color = match ? locationColor(match.location) : undefined; return <li key={`${i.name}-${i.unit}`} className={match ? 'have-it' : 'need-it'}>
+  const [linkingIndex, setLinkingIndex] = useState<number | null>(null)
+  const linkIngredient = (index: number, pantryItemId: string | null) => onUpdate({ ingredients: recipe.ingredients.map((ing, i) => i === index ? { ...ing, linkedPantryItemId: pantryItemId || undefined } : ing) })
+  if (cooking) return <CookingMode recipe={recipe} pantry={pantry} onUpdate={onUpdate} onClose={() => setCooking(false)} onFinished={() => { onCooked(); setCooking(false) }} />
+  return <div className="modal-backdrop"><div className="dialog recipe-dialog"><button className="close" onClick={onClose}><X /></button><div className={`detail-art ${recipe.imageUrl ? 'has-photo' : ''}`} style={{ background: `linear-gradient(135deg, ${recipe.color}, #14231d)` }}>{recipe.imageUrl ? <img src={recipe.imageUrl} alt={recipe.title} /> : <><span>{recipe.title.split(' ').slice(0, 2).map(w => w[0]).join('')}</span><i /></>}</div><div className="detail-heading"><p className="eyebrow">{recipe.sourceType}</p><h2>{recipe.title}</h2><p>{recipe.description}</p><div><span><Clock3 size={15} /> {recipe.minutes} min</span><span><Users size={15} /> {recipe.servings} servings</span><span>{recipe.cost}</span>{Boolean(recipe.cookedCount) && <span><RotateCcw size={14} /> Cooked {recipe.cookedCount}</span>}</div></div><div className="rating-row"><span>Household rating</span><div>{[1, 2, 3, 4, 5].map(star => <button key={star} className={star <= (recipe.rating || 0) ? 'active' : ''} onClick={() => onUpdate({ rating: star })} aria-label={`${star} stars`}><Star size={21} fill={star <= (recipe.rating || 0) ? 'currentColor' : 'none'} /></button>)}</div></div><div className="recipe-columns"><section><h3>Ingredients</h3><p className="ingredient-summary">{recipe.ingredients.filter(i => resolvePantryMatch(i, pantry)).length} of {recipe.ingredients.length} on hand</p><ul className="ingredient-list">{recipe.ingredients.map((i, index) => { const match = resolvePantryMatch(i, pantry); const color = match ? locationColor(match.location) : undefined; return <li key={`${i.name}-${i.unit}`} className={match ? 'have-it' : 'need-it'}>
   <span className="ingredient-status">{match ? <Check size={14} /> : <X size={14} />}</span>
   <span><b>{formatAmount(i.amount)} {i.unit}</b> {i.name}</span>
   {match?.location ? <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{match.location}</span> : match ? <span className="pantry-badge">On hand</span> : null}
-</li> })}</ul></section><section><h3>Method</h3><ol>{recipe.instructions.map((s, i) => <li key={i}>{s}</li>)}</ol></section></div><label className="recipe-notes"><NotebookPen size={18} /> Household notes<textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onUpdate({ notes: notes.trim() })} placeholder="Double the sauce, less salt, everyone loved it…" /></label>{recipe.sourceUrl && <a className="source-link" href={recipe.sourceUrl} target="_blank" rel="noreferrer">View original source at {recipe.source} <ExternalLink size={15} /></a>}<div className="detail-actions"><button className="button" onClick={() => setCooking(true)}><ChefHat size={18} /> Start cooking</button><button className="button gold" onClick={onAdd}><CalendarDays size={18} /> Add to calendar</button></div></div></div>
+  <button className="plain-icon" aria-label={`Link ${i.name} to a pantry item`} onClick={() => setLinkingIndex(index)}><Link2 size={14} /></button>
+</li> })}</ul></section><section><h3>Method</h3><ol>{recipe.instructions.map((s, i) => <li key={i}>{s}</li>)}</ol></section></div><label className="recipe-notes"><NotebookPen size={18} /> Household notes<textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onUpdate({ notes: notes.trim() })} placeholder="Double the sauce, less salt, everyone loved it…" /></label>{recipe.sourceUrl && <a className="source-link" href={recipe.sourceUrl} target="_blank" rel="noreferrer">View original source at {recipe.source} <ExternalLink size={15} /></a>}<div className="detail-actions"><button className="button" onClick={() => setCooking(true)}><ChefHat size={18} /> Start cooking</button><button className="button gold" onClick={onAdd}><CalendarDays size={18} /> Add to calendar</button></div></div>
+  {linkingIndex !== null && <IngredientLinkDialog ingredient={recipe.ingredients[linkingIndex]} pantry={pantry} onLink={id => { linkIngredient(linkingIndex, id); setLinkingIndex(null) }} onClose={() => setLinkingIndex(null)} />}</div>
 }
 
-function CookingMode({ recipe, pantry, onClose, onFinished }: { recipe: Recipe; pantry: PantryItem[]; onClose: () => void; onFinished: () => void }) {
+function IngredientLinkDialog({ ingredient, pantry, onLink, onClose }: { ingredient: Ingredient; pantry: PantryItem[]; onLink: (pantryItemId: string | null) => void; onClose: () => void }) {
+  const [search, setSearch] = useState('')
+  const term = search.trim().toLowerCase()
+  const confirmed = pantry.filter(item => item.confirmed && (!term || item.name.toLowerCase().includes(term)))
+  const autoMatch = findPantryItem(ingredient.name, pantry)
+  return <div className="modal-backdrop"><div className="dialog small">
+    <button className="close" onClick={onClose}><X /></button>
+    <div className="dialog-icon"><Link2 /></div>
+    <p className="eyebrow">Link ingredient</p>
+    <h2>{ingredient.name}</h2>
+    <p className="muted">Pick the exact pantry item this ingredient is. It'll stay linked for this recipe, show up as on hand, and skip the shopping list while it's confirmed in your pantry.</p>
+    {ingredient.linkedPantryItemId && <button className="button full" onClick={() => onLink(null)}><X size={16} /> Clear manual link</button>}
+    <label className="search-field" style={{ margin: '.9rem 0' }}><Search size={18} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search your confirmed pantry" autoFocus /></label>
+    <div className="location-grid ingredient-link-grid">
+      {confirmed.map(item => { const color = locationColor(item.location); const isLinked = ingredient.linkedPantryItemId === item.id; const isAuto = !ingredient.linkedPantryItemId && autoMatch?.id === item.id; return (
+        <button key={item.id} className={`location-tile ${isLinked || isAuto ? 'linked' : ''}`} style={color ? { '--zone-color': color } as CSSProperties : undefined} onClick={() => onLink(item.id)}>
+          <span>{item.name}</span>
+          <small>{item.location || (isAuto ? 'Auto-matched' : 'No location set')}</small>
+        </button>
+      ) })}
+      {!confirmed.length && <p className="muted">No confirmed pantry items match “{search}”.</p>}
+    </div>
+  </div></div>
+}
+
+function CookingMode({ recipe, pantry, onUpdate, onClose, onFinished }: { recipe: Recipe; pantry: PantryItem[]; onUpdate: (patch: Partial<Recipe>) => void; onClose: () => void; onFinished: () => void }) {
   const [step, setStep] = useState(0)
   const [checked, setChecked] = useState<Record<number, boolean>>({})
+  const [linkingIndex, setLinkingIndex] = useState<number | null>(null)
+  const linkIngredient = (index: number, pantryItemId: string | null) => onUpdate({ ingredients: recipe.ingredients.map((ing, i) => i === index ? { ...ing, linkedPantryItemId: pantryItemId || undefined } : ing) })
   useEffect(() => {
     let lock: { release: () => Promise<void> } | undefined
     const wakeLock = (navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock
@@ -614,7 +645,13 @@ function CookingMode({ recipe, pantry, onClose, onFinished }: { recipe: Recipe; 
     return () => { void lock?.release() }
   }, [])
   const steps = recipe.instructions.length ? recipe.instructions : ['Follow your household notes and cook until safely done.']
-  return <div className="modal-backdrop cooking-backdrop"><div className="cooking-mode"><header><div><p className="eyebrow">Cooking mode</p><h2>{recipe.title}</h2></div><button onClick={onClose} aria-label="Close cooking mode"><X /></button></header><div className="cooking-layout"><aside><h3>Ingredients</h3>{recipe.ingredients.map((ingredient, index) => { const match = findPantryItem(ingredient.name, pantry); const color = match ? locationColor(match.location) : undefined; return <button className={checked[index] ? 'checked' : ''} key={`${ingredient.name}-${index}`} onClick={() => setChecked(current => ({ ...current, [index]: !current[index] }))}><span className="check-box">{checked[index] && <Check size={16} />}</span><b>{formatAmount(ingredient.amount)} {ingredient.unit}</b><span className="cooking-ingredient-name">{ingredient.name}{match && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{match.location || 'On hand'}</span>}</span></button> })}</aside><main><span className="step-count">Step {step + 1} of {steps.length}</span><p>{steps[step]}</p><div><button className="button" disabled={step === 0} onClick={() => setStep(value => value - 1)}><ChevronLeft /> Back</button>{step < steps.length - 1 ? <button className="button gold" onClick={() => setStep(value => value + 1)}>Next <ChevronRight /></button> : <button className="button gold" onClick={onFinished}><Check /> Finished cooking</button>}</div></main></div></div></div>
+  return <div className="modal-backdrop cooking-backdrop"><div className="cooking-mode"><header><div><p className="eyebrow">Cooking mode</p><h2>{recipe.title}</h2></div><button onClick={onClose} aria-label="Close cooking mode"><X /></button></header><div className="cooking-layout"><aside><h3>Ingredients</h3>{recipe.ingredients.map((ingredient, index) => { const match = resolvePantryMatch(ingredient, pantry); const color = match ? locationColor(match.location) : undefined; return <div className={`ingredient-row ${checked[index] ? 'checked' : ''}`.trim()} key={`${ingredient.name}-${index}`}>
+    <button className="check-box" onClick={() => setChecked(current => ({ ...current, [index]: !current[index] }))}>{checked[index] && <Check size={16} />}</button>
+    <b>{formatAmount(ingredient.amount)} {ingredient.unit}</b>
+    <span className="cooking-ingredient-name">{ingredient.name}{match && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{match.location || 'On hand'}</span>}</span>
+    <button className="plain-icon" aria-label={`Link ${ingredient.name} to a pantry item`} onClick={() => setLinkingIndex(index)}><Link2 size={14} /></button>
+  </div> })}</aside><main><span className="step-count">Step {step + 1} of {steps.length}</span><p>{steps[step]}</p><div><button className="button" disabled={step === 0} onClick={() => setStep(value => value - 1)}><ChevronLeft /> Back</button>{step < steps.length - 1 ? <button className="button gold" onClick={() => setStep(value => value + 1)}>Next <ChevronRight /></button> : <button className="button gold" onClick={onFinished}><Check /> Finished cooking</button>}</div></main></div></div>
+  {linkingIndex !== null && <IngredientLinkDialog ingredient={recipe.ingredients[linkingIndex]} pantry={pantry} onLink={id => { linkIngredient(linkingIndex, id); setLinkingIndex(null) }} onClose={() => setLinkingIndex(null)} />}</div>
 }
 
 function ManualRecipeDialog({ onClose, onSave }: { onClose: () => void; onSave: (r: Recipe) => void }) {
