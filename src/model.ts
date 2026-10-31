@@ -199,8 +199,18 @@ function singularizeWord(word: string): string {
   return word
 }
 
+// "Tuna with Basil" and "Peaches in Syrup" name their primary food before
+// with/in; whatever follows is a flavor or packing note, not the food itself,
+// so it's dropped before matching (a plain ingredient like "basil" shouldn't
+// match a tuna product just because basil is in its name somewhere).
+function primaryFoodPortion(name: string): string {
+  const normalized = normalizeName(name)
+  const match = normalized.match(/^(.+?)\s+(?:with|in)\s+.+$/)
+  return match ? match[1] : normalized
+}
+
 function headWord(name: string): string {
-  const words = normalizeName(name).split(' ').filter(Boolean)
+  const words = primaryFoodPortion(name).split(' ').filter(Boolean)
   return singularizeWord(words[words.length - 1] || '')
 }
 

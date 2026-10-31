@@ -120,6 +120,25 @@ describe('findPantryItem', () => {
     expect(findPantryItem('onion', pantry)?.id).toBe('a')
     expect(findPantryItem('garlic', pantry)?.id).toBe('b')
   })
+
+  it('treats a "with"/"in" flavor note as secondary, not the primary food', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'tuna with basil', amount: 1, unit: 'can', confirmed: true },
+      { id: 'b', name: 'peaches in syrup', amount: 1, unit: 'can', confirmed: true },
+    ]
+    expect(findPantryItem('basil', pantry)).toBeUndefined()
+    expect(findPantryItem('tuna', pantry)?.id).toBe('a')
+    expect(findPantryItem('syrup', pantry)).toBeUndefined()
+    expect(findPantryItem('peaches', pantry)?.id).toBe('b')
+  })
+
+  it('finds branded staples by their trailing food word', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'carrot cake', amount: 1, unit: 'each', confirmed: true, location: 'Pantry Shelf 4' },
+      { id: 'b', name: 'schnucks sliced carrots', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 2' },
+    ]
+    expect(findPantryItem('carrots', pantry)?.id).toBe('b')
+  })
 })
 
 describe('pantry locations', () => {
