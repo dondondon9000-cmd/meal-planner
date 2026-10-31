@@ -28,15 +28,10 @@ export const recipeSchema = {
   },
 } as const
 
-export function extractResponseText(response: Record<string, unknown>) {
-  if (typeof response.output_text === 'string') return response.output_text
-  const output = Array.isArray(response.output) ? response.output : []
-  for (const item of output) {
-    if (!item || typeof item !== 'object') continue
-    const content = Array.isArray((item as { content?: unknown[] }).content) ? (item as { content: unknown[] }).content : []
-    for (const block of content) {
-      if (block && typeof block === 'object' && typeof (block as { text?: unknown }).text === 'string') return (block as { text: string }).text
-    }
+export function extractToolInput(response: Record<string, unknown>): unknown {
+  const content = Array.isArray(response.content) ? response.content : []
+  for (const block of content) {
+    if (block && typeof block === 'object' && (block as { type?: unknown }).type === 'tool_use') return (block as { input?: unknown }).input
   }
   throw new Error('The model did not return a recipe')
 }
@@ -47,7 +42,7 @@ export function toAiRecipe(value: Omit<Recipe, 'id' | 'color' | 'sourceType' | '
     id: `ai-${responseId}`,
     color: '#73536f',
     sourceType: 'AI draft',
-    source: 'OpenAI',
+    source: 'Claude',
     ingredients: value.ingredients.map(ingredient => ({ ...ingredient, store: 'Walmart' })),
   }
 }

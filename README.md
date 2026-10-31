@@ -29,10 +29,8 @@ The demo intentionally does not pretend to sync across devices. The interface la
 
 - Barcode scanning uses the browser's camera (via `@zxing/browser`) and looks products up against [Open Food Facts](https://world.openfoodfacts.org/), a free, keyless, client-side product database. Items it can't find are shown with their raw barcode so you can type the name in manually.
 - `THEMEALDB_API_KEY`: optional server-side override for attributed, user-initiated recipe search. When unset, this private household app uses TheMealDB's published basic key `1`. Results link to their source, and the key never enters the browser.
-- `OPENAI_API_KEY`: optional server-side key for in-app AI recipe creation. AI drafts use structured output, are not stored by OpenAI through this request (`store: false`), and can be saved to the shared shelf like sourced recipes.
-- `OPENAI_RECIPE_MODEL`: optional model override; defaults to `gpt-5.4-mini`.
-- `OPENAI_IMAGE_MODEL`: optional artwork model override; defaults to `gpt-image-2`. Artwork is generated only after an explicit button press, uses low quality for a small thumbnail cost, and is capped to three saved generated images to keep shared state compact.
-- `OPENAI_API_KEY`: reserved for server-side pantry vision and clearly labeled AI recipe drafts. Do not expose this key to browser code. Uploaded pantry images should go to ephemeral object storage, be processed into a draft, and be deleted immediately after confirmation or expiration.
+- `ANTHROPIC_API_KEY`: optional server-side key for in-app AI recipe creation (Claude). AI drafts use structured output via tool use and can be saved to the shared shelf like sourced recipes. Never expose this key to browser code.
+- `ANTHROPIC_RECIPE_MODEL`: optional model override; defaults to `claude-haiku-5-5`.
 
 Copy `.env.example` to `.env.local` only for local development. Never commit secrets.
 
@@ -40,7 +38,7 @@ Copy `.env.example` to `.env.local` only for local development. Never commit sec
 
 The built-in shelf is a small, original set maintained in source, so it is fast, predictable, offline-capable, and free of ambiguous bulk-dataset rights. Family recipes stay within the household.
 
-TheMealDB powers basic, attributed, user-initiated meal-name search with its published key `1`; its documentation reserves supporter keys for broader production/app-store use. Optional OpenAI recipe generation stays inside the app and produces a complete, savable draft; it is disabled until a server-side API key is configured. Edamam has strong filtering and data quality but its standard web-recipe plans restrict caching and omit third-party instructions, so it is not used as the offline library. RecipeNLG is research-oriented, very large, inconsistently sourced, and does not present a sufficiently clear whole-dataset content license for redistribution here. Spoonacular remains a possible paid provider, but would add vendor cost and terms review without improving the private household release enough.
+TheMealDB powers basic, attributed, user-initiated meal-name search with its published key `1`; its documentation reserves supporter keys for broader production/app-store use. Optional Claude recipe generation stays inside the app and produces a complete, savable draft; it is disabled until a server-side API key is configured. Edamam has strong filtering and data quality but its standard web-recipe plans restrict caching and omit third-party instructions, so it is not used as the offline library. RecipeNLG is research-oriented, very large, inconsistently sourced, and does not present a sufficiently clear whole-dataset content license for redistribution here. Spoonacular remains a possible paid provider, but would add vendor cost and terms review without improving the private household release enough.
 
 No MCP server is required for the app runtime. A runtime MCP dependency would add an unnecessary privacy and availability boundary to an ordinary user-facing recipe search.
 
