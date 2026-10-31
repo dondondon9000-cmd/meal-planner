@@ -493,18 +493,29 @@ function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onCh
 }) {
   const expired = isExpired(item)
   const color = locationColor(item.location)
+  const nameRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = nameRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [item.name])
   return <div className={`${item.confirmed ? 'confirmed' : ''} ${expired ? 'expired' : ''}`.trim()} style={color ? { borderLeftColor: color, borderLeftWidth: 4 } : undefined}>
     <div className="pantry-item-row">
-      <button className="grip-handle" aria-label={`Move ${item.name} to a location`}
-        onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); onDragStart(e.clientX, e.clientY) }}
-        onPointerMove={e => onDragMove(e.clientX, e.clientY)}
-        onPointerUp={e => onDragEnd(e.clientX, e.clientY)}
-        onPointerCancel={e => onDragEnd(e.clientX, e.clientY)}><GripVertical size={16} /></button>
-      <button className="check-button" onClick={onToggleConfirmed}>{item.confirmed && <Check size={15} />}</button>
-      <input value={item.name} onChange={e => onChangeName(e.target.value)} />
-      <input className="qty" type="number" value={item.amount} min="0" step="0.125" onChange={e => onChangeAmount(Number(e.target.value))} />
-      <select value={item.unit} onChange={e => onChangeUnit(e.target.value)}><option>each</option><option>cup</option><option>tbsp</option><option>tsp</option><option>can</option><option>oz</option><option>lb</option><option>clove</option><option>package</option><option>bag</option></select>
-      <button className="plain-icon" aria-label={`Details for ${item.name}`} onClick={onEdit}><NotebookPen size={16} /></button>
+      <div className="pantry-item-top">
+        <button className="grip-handle" aria-label={`Move ${item.name} to a location`}
+          onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); onDragStart(e.clientX, e.clientY) }}
+          onPointerMove={e => onDragMove(e.clientX, e.clientY)}
+          onPointerUp={e => onDragEnd(e.clientX, e.clientY)}
+          onPointerCancel={e => onDragEnd(e.clientX, e.clientY)}><GripVertical size={16} /></button>
+        <button className="check-button" onClick={onToggleConfirmed}>{item.confirmed && <Check size={15} />}</button>
+        <textarea ref={nameRef} className="item-name" rows={1} value={item.name} onChange={e => onChangeName(e.target.value)} />
+      </div>
+      <div className="pantry-item-bottom">
+        <input className="qty" type="number" value={item.amount} min="0" step="0.125" onChange={e => onChangeAmount(Number(e.target.value))} />
+        <select value={item.unit} onChange={e => onChangeUnit(e.target.value)}><option>each</option><option>cup</option><option>tbsp</option><option>tsp</option><option>can</option><option>oz</option><option>lb</option><option>clove</option><option>package</option><option>bag</option></select>
+        <button className="plain-icon" aria-label={`Details for ${item.name}`} onClick={onEdit}><NotebookPen size={16} /></button>
+      </div>
     </div>
     {(item.fullness || item.expiresAt || item.note || item.location) && <div className="pantry-item-meta">
       {item.location && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{item.location}</span>}
