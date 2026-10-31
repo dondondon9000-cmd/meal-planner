@@ -132,12 +132,26 @@ describe('findPantryItem', () => {
     expect(findPantryItem('peaches', pantry)?.id).toBe('b')
   })
 
-  it('finds branded staples by their trailing food word', () => {
+  it('matches a staple described only with safe descriptors, not a different dish sharing a word', () => {
     const pantry: PantryItem[] = [
       { id: 'a', name: 'carrot cake', amount: 1, unit: 'each', confirmed: true, location: 'Pantry Shelf 4' },
-      { id: 'b', name: 'schnucks sliced carrots', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 2' },
+      { id: 'b', name: 'sliced carrots', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 2' },
     ]
     expect(findPantryItem('carrots', pantry)?.id).toBe('b')
+  })
+
+  it('does not match a processed form of the same base food, e.g. condensed milk for milk', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'condensed milk', amount: 1, unit: 'can', confirmed: true, location: 'Pantry Shelf 5' },
+    ]
+    expect(findPantryItem('milk', pantry)).toBeUndefined()
+  })
+
+  it('a brand-prefixed item only matches once the brand name is dropped', () => {
+    const pantry: PantryItem[] = [
+      { id: 'a', name: 'schnucks sliced carrots', amount: 1, unit: 'can', confirmed: true },
+    ]
+    expect(findPantryItem('carrots', pantry)).toBeUndefined()
   })
 })
 

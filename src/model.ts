@@ -209,22 +209,43 @@ function primaryFoodPortion(name: string): string {
   return match ? match[1] : normalized
 }
 
-function headWord(name: string): string {
-  const words = primaryFoodPortion(name).split(' ').filter(Boolean)
-  return singularizeWord(words[words.length - 1] || '')
+// Words that describe a food's color, cut, or freshness without ever changing
+// what it fundamentally is - safe to ignore on either side of a match.
+// Deliberately NOT included: processing/form words like "condensed",
+// "powdered", or "evaporated" (condensed milk isn't milk for cooking
+// purposes), brand names, and anything naming a different dish or product
+// ("cake", "bread", "sauce"). Those are left in place, so a name carrying one
+// only matches an identical name - missing a real match is far better than
+// wrongly treating a different product as the ingredient a recipe needs.
+const safeQualifiers = new Set([
+  'fresh', 'frozen', 'dried', 'raw', 'ripe', 'organic',
+  'red', 'yellow', 'white', 'green', 'purple', 'orange', 'brown', 'black',
+  'sliced', 'diced', 'chopped', 'minced', 'crushed', 'grated', 'shredded', 'ground', 'whole',
+  'roasted', 'toasted', 'smoked', 'cooked', 'blanched', 'steamed',
+  'large', 'small', 'medium', 'baby', 'mini',
+])
+
+function coreFoodName(name: string): string {
+  const words = primaryFoodPortion(name).split(' ').filter(Boolean).map(singularizeWord)
+  return words.filter(word => !safeQualifiers.has(word)).join(' ')
 }
 
 // Two food names are treated as the same ingredient only when they're an exact
-// match or share the same final (head) word once singularized - "onion" matches
-// "yellow onion" this way, but "carrot" does NOT match "carrot cake": the head
-// word of a compound like "carrot cake" is "cake", a different food entirely.
-// Plain substring matching used to conflate those, which produced wrong
-// pantry/location matches on the shopping list and recipe views.
+// match, or identical once harmless descriptors (see safeQualifiers) are
+// stripped from both - "onion" matches "yellow onion" this way, but "milk"
+// does NOT match "condensed milk", and "carrot" does NOT match "carrot cake":
+// those extra words aren't on the safe list, so the names are left as they
+// are and simply don't match. Plain substring/last-word matching used to
+// treat any shared word as proof of the same ingredient, which kept
+// producing wrong pantry/location matches on the shopping list and recipe
+// views - this whitelist approach is deliberately conservative so new,
+// unanticipated product names fail closed (shown as "need it") instead of
+// silently matching something they aren't.
 export function sameFoodName(a: string, b: string): boolean {
   const na = normalizeName(a), nb = normalizeName(b)
   if (na === nb) return true
-  const ha = headWord(a), hb = headWord(b)
-  return Boolean(ha) && ha === hb
+  const ca = coreFoodName(a), cb = coreFoodName(b)
+  return Boolean(ca) && ca === cb
 }
 
 const units = ['tablespoons', 'tablespoon', 'tbsp', 'teaspoons', 'teaspoon', 'tsp', 'cups', 'cup', 'ounces', 'ounce', 'oz', 'pounds', 'pound', 'lbs', 'lb', 'cans', 'can', 'cloves', 'clove', 'packages', 'package', 'bags', 'bag', 'heads', 'head', 'bunches', 'bunch', 'each']
