@@ -358,6 +358,8 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const [scanning, setScanning] = useState(false)
   const [scanningBarcode, setScanningBarcode] = useState(false)
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null)
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
+  const toggleGroup = (label: string) => setOpenGroups(current => { const next = new Set(current); if (next.has(label)) next.delete(label); else next.add(label); return next })
   const [browseZone, setBrowseZone] = useState<LocationZone | null>(null)
   const [browseLocation, setBrowseLocation] = useState<string | null>(null)
   const [placingItemId, setPlacingItemId] = useState<string | null>(null)
@@ -422,10 +424,12 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
       <div className="quick-entry"><input value={entry} onChange={e => setEntry(e.target.value)} onKeyDown={e => e.key === 'Enter' && addText()} placeholder="Try: rice, 2 onions, 1½ cups broth" /><button onClick={addText}><Plus /></button></div>
       <label className="search-field pantry-search"><Search size={18} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search this pantry by name or location" /></label>
-      {groups.map(group => <div className="pantry-group" key={group.label}>
-        <h3 className="pantry-group-title" style={group.color ? { color: group.color } : undefined}>{group.label}<span>{group.items.length}</span></h3>
-        <div className="inventory-list">{group.items.map(renderRow)}</div>
-      </div>)}
+      {groups.map(group => { const isOpen = term ? true : openGroups.has(group.label); return <div className="pantry-group" key={group.label}>
+        <button className="pantry-group-title" style={group.color ? { color: group.color } : undefined} onClick={() => toggleGroup(group.label)} aria-expanded={isOpen}>
+          <ChevronRight size={16} className={`group-chevron ${isOpen ? 'open' : ''}`.trim()} />{group.label}<span>{group.items.length}</span>
+        </button>
+        {isOpen && <div className="inventory-list">{group.items.map(renderRow)}</div>}
+      </div> })}
       {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
       <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
     {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onDelete={() => { deleteItem(editingItem.id); setEditingItem(null) }} onClose={() => setEditingItem(null)} />}
