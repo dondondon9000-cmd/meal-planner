@@ -68,6 +68,19 @@ export function isExpired(item: PantryItem, today = new Date()): boolean {
   return item.expiresAt < today.toISOString().slice(0, 10)
 }
 
+export function daysUntilExpiration(item: PantryItem, today = new Date()): number | null {
+  if (!item.expiresAt) return null
+  const [y, m, d] = item.expiresAt.split('-').map(Number)
+  const target = new Date(y, (m || 1) - 1, d || 1)
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  return Math.round((target.getTime() - start.getTime()) / 86_400_000)
+}
+
+export function isExpiringSoon(item: PantryItem, withinDays = 30, today = new Date()): boolean {
+  const remaining = daysUntilExpiration(item, today)
+  return remaining !== null && remaining >= 0 && remaining <= withinDays
+}
+
 export type LocationZone = 'Pantry' | 'Fridge' | 'Deep Freezer 1' | 'Deep Freezer 2' | 'Spice Shelf' | 'Cabinets'
 
 export const locationZones: LocationZone[] = ['Pantry', 'Fridge', 'Deep Freezer 1', 'Deep Freezer 2', 'Spice Shelf', 'Cabinets']

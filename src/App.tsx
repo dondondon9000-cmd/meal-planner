@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
 import {
-  buildGroceryList, buildWeekDraft, days, findPantryItem, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired,
+  buildGroceryList, buildWeekDraft, days, daysUntilExpiration, findPantryItem, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired, isExpiringSoon,
   locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone, resolvePantryMatch,
   mealKinds, parseIngredientLine, parsePantryEntry, seedMembers, seedRecipes, seedSlots,
   type GroceryItem, type Ingredient, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
@@ -403,6 +403,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
 
   const term = search.trim().toLowerCase()
   const visible = draft.filter(item => !term || item.name.toLowerCase().includes(term) || (item.location || '').toLowerCase().includes(term))
+  const expiringSoon = visible.filter(item => isExpiringSoon(item)).sort((a, b) => (daysUntilExpiration(a) ?? 0) - (daysUntilExpiration(b) ?? 0))
   const groups: { label: string; color?: string; items: PantryItem[] }[] = [
     ...locationZones.map(zone => ({ label: zone, color: locationZoneColors[zone], items: visible.filter(item => locationZoneOf(item.location) === zone) })),
     { label: 'Unassigned location', items: visible.filter(item => !locationZoneOf(item.location)) },
@@ -422,6 +423,10 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     {scanningBarcode && <Suspense fallback={<div className="modal-backdrop"><div className="dialog small barcode-dialog"><p className="muted">Loading scanner…</p></div></div>}><BarcodeScannerDialog onClose={() => setScanningBarcode(false)} onAdd={addFromBarcode} /></Suspense>}
     <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is — or drag the grip handle onto a spot in "Browse your kitchen" above.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
+      {expiringSoon.length > 0 && <div className="pantry-group expiring-soon-group">
+        <h3 className="pantry-group-title expiring-soon-title"><AlertTriangle size={16} />Expiring Soon<span>{expiringSoon.length}</span></h3>
+        <div className="inventory-list">{expiringSoon.map(renderRow)}</div>
+      </div>}
       <div className="quick-entry"><input value={entry} onChange={e => setEntry(e.target.value)} onKeyDown={e => e.key === 'Enter' && addText()} placeholder="Try: rice, 2 onions, 1½ cups broth" /><button onClick={addText}><Plus /></button></div>
       <label className="search-field pantry-search"><Search size={18} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search this pantry by name or location" /></label>
       {groups.map(group => { const isOpen = term ? true : openGroups.has(group.label); return <div className="pantry-group" key={group.label}>
@@ -496,6 +501,7 @@ function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onCh
   onDragStart: (x: number, y: number) => void; onDragMove: (x: number, y: number) => void; onDragEnd: (x: number, y: number) => void
 }) {
   const expired = isExpired(item)
+  const soon = !expired && isExpiringSoon(item)
   const color = locationColor(item.location)
   const nameRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -524,7 +530,7 @@ function PantryRow({ item, onToggleConfirmed, onChangeName, onChangeAmount, onCh
     {(item.fullness || item.expiresAt || item.note || item.location) && <div className="pantry-item-meta">
       {item.location && <span className="pantry-badge location-badge" style={color ? { borderColor: color, color } : undefined}>{item.location}</span>}
       {item.fullness && <span className="pantry-badge">{fullnessLabels[item.fullness]}</span>}
-      {item.expiresAt && <span className={`pantry-badge ${expired ? 'expired' : ''}`.trim()}>{expired && <AlertTriangle size={12} />} {expired ? 'Expired' : 'Exp'} {item.expiresAt}</span>}
+      {item.expiresAt && <span className={`pantry-badge ${expired ? 'expired' : soon ? 'soon' : ''}`.trim()}>{(expired || soon) && <AlertTriangle size={12} />} {expired ? 'Expired' : soon ? (daysUntilExpiration(item) === 0 ? 'Exp today' : `Exp in ${daysUntilExpiration(item)}d`) : 'Exp'} {!soon && item.expiresAt}</span>}
       {item.note && <span className="pantry-badge">{item.note}</span>}
     </div>}
   </div>

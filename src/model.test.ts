@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGroceryList, buildWeekDraft, findPantryItem, formatAmount, isExpired, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, resolvePantryMatch, type MealSlot, type PantryItem, type Recipe } from './model'
+import { buildGroceryList, buildWeekDraft, daysUntilExpiration, findPantryItem, formatAmount, isExpired, isExpiringSoon, locationColor, locationZoneOf, matchRecipesToPantry, parseIngredientLine, parsePantryEntry, recipeConflicts, resolvePantryMatch, type MealSlot, type PantryItem, type Recipe } from './model'
 
 const recipe: Recipe = {
   id: 'r', title: 'Test stew', description: '', cuisine: 'Test', minutes: 10, cost: '$', servings: 4,
@@ -91,6 +91,29 @@ describe('isExpired', () => {
   it('is false on and before the expiration date', () => {
     expect(isExpired({ ...item, expiresAt: '2020-06-01' }, new Date('2020-06-01'))).toBe(false)
     expect(isExpired({ ...item, expiresAt: '2020-12-01' }, new Date('2020-06-01'))).toBe(false)
+  })
+})
+
+describe('daysUntilExpiration / isExpiringSoon', () => {
+  const item: PantryItem = { id: 'p', name: 'milk', amount: 1, unit: 'each', confirmed: true }
+  const today = new Date('2020-06-01')
+
+  it('returns null when there is no expiration date', () => {
+    expect(daysUntilExpiration(item, today)).toBeNull()
+    expect(isExpiringSoon(item, 30, today)).toBe(false)
+  })
+  it('counts the days remaining, zero on the expiration date itself', () => {
+    expect(daysUntilExpiration({ ...item, expiresAt: '2020-06-01' }, today)).toBe(0)
+    expect(daysUntilExpiration({ ...item, expiresAt: '2020-06-15' }, today)).toBe(14)
+    expect(daysUntilExpiration({ ...item, expiresAt: '2020-05-25' }, today)).toBe(-7)
+  })
+  it('is expiring soon within the window, inclusive of today and the 30th day', () => {
+    expect(isExpiringSoon({ ...item, expiresAt: '2020-06-01' }, 30, today)).toBe(true)
+    expect(isExpiringSoon({ ...item, expiresAt: '2020-07-01' }, 30, today)).toBe(true)
+  })
+  it('is not expiring soon past the window, or already expired', () => {
+    expect(isExpiringSoon({ ...item, expiresAt: '2020-07-15' }, 30, today)).toBe(false)
+    expect(isExpiringSoon({ ...item, expiresAt: '2020-05-20' }, 30, today)).toBe(false)
   })
 })
 
