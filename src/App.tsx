@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type ReactElement } from 'react'
 import {
   AlertTriangle, Archive, BookOpen, Boxes, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
   ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, GripVertical, Heart, Home, Leaf, Link2, ListChecks,
-  MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
+  MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Receipt, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
   ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, Users, WandSparkles, X,
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
@@ -16,6 +16,32 @@ import {
 const zoneIcons: Record<LocationZone, typeof Archive> = {
   'Pantry': Archive, 'Fridge': Refrigerator, 'Deep Freezer 1': Snowflake,
   'Deep Freezer 2': ThermometerSnowflake, 'Spice Shelf': FlaskConical, 'Cabinets': Boxes,
+}
+
+// Downsizes a receipt photo client-side before it ever leaves the browser — a full-resolution
+// phone photo can be 5-10MB, well past what the API route (and Vercel's request body limit)
+// will accept, and a receipt is just text, so a modest JPEG re-encode loses nothing the model
+// needs to read it.
+function compressImageForUpload(file: File): Promise<{ data: string; mediaType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const maxDim = 1600
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('Could not process that photo')); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      const [, base64] = canvas.toDataURL('image/jpeg', 0.82).split(',')
+      resolve({ data: base64, mediaType: 'image/jpeg' })
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that photo')) }
+    img.src = url
+  })
 }
 
 declare global {
@@ -357,6 +383,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const [search, setSearch] = useState('')
   const [scanning, setScanning] = useState(false)
   const [scanningBarcode, setScanningBarcode] = useState(false)
+  const [scanningReceipt, setScanningReceipt] = useState(false)
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
   const toggleGroup = (label: string) => setOpenGroups(current => { const next = new Set(current); if (next.has(label)) next.delete(label); else next.add(label); return next })
@@ -378,6 +405,26 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   }
   const photoDraft = () => {
     setScanning(true); window.setTimeout(() => { setDraft(current => [...current, { id: crypto.randomUUID(), name: 'yellow onion', amount: 2, unit: 'each', confirmed: false, fullness: 'full' }, { id: crypto.randomUUID(), name: 'eggs', amount: 8, unit: 'each', confirmed: false, fullness: 'full' }, { id: crypto.randomUUID(), name: 'cheddar', amount: 6, unit: 'oz', confirmed: false, fullness: 'full' }]); setScanning(false); notify('Demo draft is ready for your review') }, 1100)
+  }
+  const scanReceipt = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setScanningReceipt(true)
+    try {
+      const { data, mediaType } = await compressImageForUpload(file)
+      const response = await fetch('/api/pantry/scan-receipt', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: data, mediaType }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not read that receipt')
+      const items = (result.items || []) as { name: string; amount?: number; unit?: string }[]
+      if (!items.length) { notify('No items found on that receipt — try a clearer photo'); return }
+      setDraft(current => [...current, ...items.map(item => ({ id: crypto.randomUUID(), name: item.name, amount: item.amount ?? 1, unit: item.unit || 'each', confirmed: false, fullness: 'full' as const }))])
+      notify(`Found ${items.length} item${items.length === 1 ? '' : 's'} — check them off below and tap Confirm snapshot`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not read that receipt')
+    } finally {
+      setScanningReceipt(false)
+    }
   }
 
   const openZone = (z: LocationZone) => { setBrowseZone(z); setBrowseLocation(pantryLocationsByZone[z].length === 1 ? pantryLocationsByZone[z][0] : null) }
@@ -419,7 +466,7 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
     onDragMove={moveDrag}
     onDragEnd={endDrag} />
 
-  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div><p className="eyebrow">Browse your kitchen</p><h2>Tap a spot to see what's there — or drag an item onto one</h2></div><LocationBrowser draft={draft} zone={browseZone} location={browseLocation} placingItemId={placingItemId} dragActive={Boolean(drag)} onOpenZone={openZone} onPickLocation={pickLocation} onBackToZone={() => setBrowseLocation(null)} onClose={closeBrowser} renderRow={renderRow} /><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button></div></section>
+  return <><section className="tonight-panel"><div className="section-title"><div><p className="eyebrow">What can I cook tonight?</p><h2>Your closest pantry matches</h2></div><span>Allergy conflicts are left out</span></div><div className="match-grid">{matches.map(match => <article className="match-card" key={match.recipe.id}><div className="match-score"><span style={{ '--match': `${match.percent * 3.6}deg` } as CSSProperties}><b>{match.percent}%</b></span></div><div><h3>{match.recipe.title}</h3><p>{match.matched} of {match.total} ingredients on hand · {match.recipe.minutes} min</p><small>{match.missing.length ? `Missing: ${match.missing.slice(0, 3).map(item => item.name).join(', ')}${match.missing.length > 3 ? '…' : ''}` : 'Ready to cook now'}</small></div><div className="match-actions"><button onClick={() => onDetail(match.recipe)}>View</button><button onClick={() => onAdd(match.recipe)}>Plan it</button>{Boolean(match.missing.length) && <button onClick={() => onAddMissing(match.recipe, match.missing)}>Add missing</button>}</div></article>)}</div></section><div className="pantry-layout"><section className="scan-panel card"><div><p className="eyebrow">Browse your kitchen</p><h2>Tap a spot to see what's there — or drag an item onto one</h2></div><LocationBrowser draft={draft} zone={browseZone} location={browseLocation} placingItemId={placingItemId} dragActive={Boolean(drag)} onOpenZone={openZone} onPickLocation={pickLocation} onBackToZone={() => setBrowseLocation(null)} onClose={closeBrowser} renderRow={renderRow} /><div className="scan-copy"><div className="dialog-icon"><Camera /></div><h2>Take a fresh look</h2><p>Photograph a shelf or enter what you have. A scan is always a draft until you confirm it.</p><label className={`upload-button ${scanning ? 'scanning' : ''}`}><Camera size={19} />{scanning ? 'Reading the shelf…' : 'Choose a pantry photo'}<input type="file" accept="image/*" capture="environment" onChange={photoDraft} /></label><small>Demo mode suggests sample items. Images are not uploaded or retained.</small><button className="button" onClick={() => setScanningBarcode(true)}><ScanBarcode size={18} /> Scan a barcode</button><label className={`upload-button ${scanningReceipt ? 'scanning' : ''}`}><Receipt size={19} />{scanningReceipt ? 'Reading receipt…' : 'Scan a receipt'}<input type="file" accept="image/*" capture="environment" onChange={scanReceipt} disabled={scanningReceipt} /></label><small>Works for a paper receipt or a screenshot of an online order — unlike the demo above, this one really reads the photo and adds items to the draft below.</small></div></section>
     {scanningBarcode && <Suspense fallback={<div className="modal-backdrop"><div className="dialog small barcode-dialog"><p className="muted">Loading scanner…</p></div></div>}><BarcodeScannerDialog onClose={() => setScanningBarcode(false)} onAdd={addFromBarcode} /></Suspense>}
     <section className="inventory-panel"><div className="section-title"><div><p className="eyebrow">Active shopping cycle</p><h2>Confirm what’s available</h2><small className="pantry-hint">Add, edit, or remove items freely below — nothing saves until you tap <b>Confirm snapshot</b>. Tap the note icon on an item to set a location, expiration date, or how full it is — or drag the grip handle onto a spot in "Browse your kitchen" above.</small></div><span>{draft.filter(i => i.confirmed).length} confirmed</span></div>
       {expiredCount > 0 && <div className="notice expired-banner"><AlertTriangle size={18} /><span><b>{expiredCount} {expiredCount === 1 ? 'item has' : 'items have'} expired.</b> They're marked red below.</span><button className="button" onClick={clearExpired}>Clear expired</button></div>}
