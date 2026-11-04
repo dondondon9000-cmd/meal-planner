@@ -17,6 +17,9 @@
   --line: rgba(242, 228, 198, .14);
   --panel: rgba(24, 46, 39, .86);
   --shadow: 0 18px 60px rgba(0, 0, 0, .32);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  --status-good: #0ca30c; --status-warning: #fab219; --status-serious: #ec835a; --status-critical: #d03b3b;
 }
 
 * { box-sizing: border-box; }
@@ -152,4 +155,19 @@ main { width: min(1440px, calc(100% - 3rem)); margin: 0 auto; position: relative
   .member-grid { grid-template-columns: 1fr; }.picker-list { grid-template-columns: 1fr; }.recipe-columns { grid-template-columns: 1fr; }.dialog { padding: 1.1rem; }.add-dialog { align-self: end; border-radius: 20px 20px 0 0; margin-bottom: -1rem; max-height: 92vh; }.detail-art { height: 190px; }.detail-actions { flex-direction: column; }.detail-actions .button { width: 100%; }.install-card { align-items: flex-start; flex-wrap: wrap; }.install-card .button { width: 100%; }.cooking-mode { padding: 1rem .75rem 2rem; }.cooking-mode > header { margin-bottom: .8rem; }.cooking-mode header h2 { font-size: 1.45rem; }.cooking-layout { gap: .7rem; }.cooking-layout aside { max-height: 220px; }.cooking-layout main { min-height: 45vh; padding: 1rem; }.cooking-layout main > p { font-size: 2rem; }.cooking-layout main > div { display: grid; grid-template-columns: 1fr 1fr; }.cooking-layout main .button { min-width: 0; }.toast { white-space: nowrap; bottom: 5.8rem; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+.price-input { width: 58px; flex: none; background: rgba(255,255,255,.04); border: 1px solid var(--line); color: var(--ink); border-radius: 7px; padding: .35rem .4rem; font-size: .75rem; text-align: right; }
+.insights-stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: .9rem; margin-bottom: 1.2rem; }
+.stat-tile { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.1rem; border-radius: 14px; background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+.stat-tile svg { color: var(--amber-light); flex: none; }
+.stat-tile b { display: block; font-size: 1.35rem; font-weight: 700; }
+.stat-tile span { display: block; color: var(--muted); font-size: .72rem; margin-top: .1rem; }
+.insights-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(340px,1fr)); gap: 1.1rem; }
+.chart-card { padding: 1.1rem 1.2rem 1.3rem; }
+.chart-card h3 { margin: 0 0 .7rem; font-size: 1.2rem; }
+.chart-body { margin: 0 -.4rem; }
+.chart-empty { font-size: .82rem; padding: 2.2rem 0; text-align: center; }
+.insights-empty { padding: 3.2rem 1.5rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: .6rem; }
+.insights-empty svg { color: var(--amber-light); }
+.insights-empty h2 { margin: .2rem 0 0; }
+.insights-empty p { color: var(--muted); max-width: 440px; font-size: .88rem; line-height: 1.5; }
 @media print { .topbar,.bottom-nav,.room-heading,.notice,.manual-add,.walmart-handoff,.shopping-top .button { display: none !important; }.app { padding: 0; }.store-columns { grid-template-columns: repeat(3,1fr); }.store-card { break-inside: avoid; color: #111; background: white; }.grocery-row select,.plain-icon { display:none; } }

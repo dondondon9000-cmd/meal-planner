@@ -3,14 +3,15 @@ import {
   AlertTriangle, Archive, BookOpen, Boxes, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CirclePlus,
   ChefHat, Clock3, Download, ExternalLink, Flame, FlaskConical, GripVertical, Heart, Home, Leaf, Link2, ListChecks,
   MoreHorizontal, NotebookPen, PackageCheck, KeyRound, Plus, Receipt, Refrigerator, RotateCcw, ScanBarcode, Search, Settings2,
-  ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, Users, WandSparkles, X,
+  ShoppingBasket, Smartphone, Snowflake, Sparkles, Star, ThermometerSnowflake, Trash2, TrendingUp, Users, WandSparkles, X,
 } from 'lucide-react'
 const BarcodeScannerDialog = lazy(() => import('./BarcodeScanner').then(m => ({ default: m.BarcodeScannerDialog })))
+const Insights = lazy(() => import('./Insights').then(m => ({ default: m.Insights })))
 import {
-  buildGroceryList, buildWeekDraft, days, daysUntilExpiration, findPantryItem, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired, isExpiringSoon,
+  buildGroceryList, buildWeekDraft, categoryFor, days, daysUntilExpiration, findPantryItem, formatAmount, fullnessLabels, fullnessLevels, initialPantry, isExpired, isExpiringSoon,
   locationColor, locationZoneColors, locationZoneOf, locationZones, matchRecipesToPantry, pantryLocationsByZone, resolvePantryMatch,
   mealKinds, parseIngredientLine, parsePantryEntry, seedMembers, seedRecipes, seedSlots,
-  type GroceryItem, type Ingredient, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
+  type GroceryItem, type HistoryEvent, type HistoryEventType, type Ingredient, type LocationZone, type MealKind, type MealSlot, type Member, type PantryItem, type Recipe, type Room,
 } from './model'
 
 const zoneIcons: Record<LocationZone, typeof Archive> = {
@@ -62,6 +63,7 @@ const roomInfo: Record<Room, { label: string; eyebrow: string; icon: typeof Home
   pantry: { label: 'Enchanted Pantry', eyebrow: 'Use what you have', icon: Archive },
   shopping: { label: 'Kitchen Table', eyebrow: 'Shop together', icon: ShoppingBasket },
   household: { label: 'Household Book', eyebrow: 'People & preferences', icon: Users },
+  insights: { label: 'Insights', eyebrow: 'See the trends', icon: TrendingUp },
 }
 
 type AddTarget = { day: number; kind: MealKind } | null
@@ -96,6 +98,7 @@ function App() {
   const [groceryChecks, setGroceryChecks] = useStoredState<Record<string, boolean>>('hh-checks', {})
   const [storeOverrides, setStoreOverrides] = useStoredState<Record<string, string>>('hh-stores', {})
   const [preferences, setPreferences] = useStoredState<Record<string, unknown>>('hh-preferences', { cuisine: 'Flexible', cookingLimit: 45, budget: 'Balanced', weekBegins: 'Monday' })
+  const [history, setHistory] = useStoredState<HistoryEvent[]>('hh-history', [])
   const [connection, setConnection] = useState<ConnectionState>('checking')
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
   const [installed, setInstalled] = useState(() => window.matchMedia('(display-mode: standalone)').matches)
@@ -216,13 +219,40 @@ function App() {
     window.setTimeout(() => setToast(current => current?.id === next.id ? null : current), 2600)
   }
 
+  // Automatic activity tracking for the Insights page. Mirrors every event into this
+  // device's local history (so the demo and offline use still show trends) and, when a
+  // shared household is connected, also appends it server-side - a separate insert-only
+  // table, not the single overwritten state blob, so years of activity never have to be
+  // resent on an unrelated save.
+  const logHistory = (type: HistoryEventType, payload: Record<string, unknown>) => {
+    const event: HistoryEvent = { id: crypto.randomUUID(), type, payload, occurredAt: new Date().toISOString() }
+    setHistory(current => [...current, event].slice(-2000))
+    if (connection === 'online') {
+      fetch('/api/history', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: [{ type, payload }] }) }).catch(() => undefined)
+    }
+  }
+
+  useEffect(() => {
+    if (room !== 'insights' || connection !== 'online') return
+    let active = true
+    fetch('/api/history', { credentials: 'same-origin', cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (active && Array.isArray(data?.events)) setHistory(data.events) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [room, connection])
+
   const updateRecipe = (id: string, patch: Partial<Recipe>) => {
     setRecipes(current => current.map(recipe => recipe.id === id ? { ...recipe, ...patch } : recipe))
     setDetail(current => current?.id === id ? { ...current, ...patch } : current)
   }
 
-  const markCooked = (recipe: Recipe) => {
+  const markCooked = (recipe: Recipe, slot?: MealSlot) => {
     updateRecipe(recipe.id, { cookedCount: (recipe.cookedCount || 0) + 1, lastCookedAt: new Date().toISOString() })
+    logHistory('meal_cooked', {
+      recipeId: recipe.id, title: recipe.title, cuisine: recipe.cuisine, minutes: recipe.minutes, cost: recipe.cost,
+      servings: slot?.servings ?? recipe.servings, diners: slot?.diners.length ?? null, leftover: Boolean(slot?.leftoverFrom),
+    })
     notify(`${recipe.title} added to cooking history`)
   }
 
@@ -265,9 +295,13 @@ function App() {
 
         {room === 'hearth' && <Hearth slots={slots} recipes={recipes} members={members} onAdd={openAdd} onDetail={setDetail} onRemove={id => { setSlots(s => s.filter(x => x.id !== id)); notify('Meal removed') }} onLeftovers={(slot, servings) => { setAddTarget({ day: Math.min(6, slot.day + 1), kind: 'Lunch' }); setSelectedRecipe(slot.recipeId); setSelectedDiners(members.filter(m => m.kind === 'human').slice(0, servings).map(m => m.id)); notify(`${servings} leftover servings ready to place`) }} onMove={(slot, direction) => setSlots(current => current.map(s => s.id === slot.id ? { ...s, day: Math.max(0, Math.min(6, s.day + direction)) } : s))} onCooked={markCooked} onBuildWeek={() => { const next = buildWeekDraft(recipes, members, preferences, slots); const added = next.length - slots.length; setSlots(next); notify(added ? `${added} open dinners filled` : 'Every dinner already has a plan') }} onShopping={() => nav('shopping')} groceryCount={groceries.filter(i => !i.checked).length} />}
         {room === 'recipes' && <Recipes recipes={recipes} setRecipes={setRecipes} members={members} preferences={preferences} pantry={pantry} onDetail={setDetail} onAdd={(recipe) => { setSelectedRecipe(recipe.id); setAddTarget({ day: 0, kind: 'Dinner' }) }} notify={notify} />}
-        {room === 'pantry' && <Pantry pantry={pantry} setPantry={setPantry} recipes={recipes} members={members} onDetail={setDetail} onAdd={recipe => { setSelectedRecipe(recipe.id); setAddTarget({ day: 0, kind: 'Dinner' }) }} onAddMissing={(recipe, missing) => { const names = new Set(manualItems.map(item => item.name.toLowerCase())); const additions = missing.filter(item => !names.has(item.name.toLowerCase())).map(item => ({ ...item, id: crypto.randomUUID(), checked: false, source: 'manual' as const })); setManualItems(current => [...current, ...additions]); notify(`${additions.length} missing ${additions.length === 1 ? 'item' : 'items'} added to the list`) }} notify={notify} />}
-        {room === 'shopping' && <Shopping items={groceries} planCount={plannedGroceries.length} setChecks={setGroceryChecks} manualItems={manualItems} setManualItems={setManualItems} setStoreOverrides={setStoreOverrides} notify={notify} />}
+        {room === 'pantry' && <Pantry pantry={pantry} setPantry={setPantry} recipes={recipes} members={members} onDetail={setDetail} onAdd={recipe => { setSelectedRecipe(recipe.id); setAddTarget({ day: 0, kind: 'Dinner' }) }} onAddMissing={(recipe, missing) => { const names = new Set(manualItems.map(item => item.name.toLowerCase())); const additions = missing.filter(item => !names.has(item.name.toLowerCase())).map(item => ({ ...item, id: crypto.randomUUID(), checked: false, source: 'manual' as const })); setManualItems(current => [...current, ...additions]); notify(`${additions.length} missing ${additions.length === 1 ? 'item' : 'items'} added to the list`) }} notify={notify}
+          onExpired={items => items.forEach(item => logHistory('pantry_expired', { name: item.name, category: categoryFor(item.name), location: item.location || null, zone: locationZoneOf(item.location) || null, amount: item.amount, unit: item.unit }))}
+          onUsed={items => items.forEach(item => logHistory('pantry_used', { name: item.name, category: categoryFor(item.name), location: item.location || null, zone: locationZoneOf(item.location) || null, amount: item.amount, unit: item.unit }))} />}
+        {room === 'shopping' && <Shopping items={groceries} planCount={plannedGroceries.length} setChecks={setGroceryChecks} manualItems={manualItems} setManualItems={setManualItems} setStoreOverrides={setStoreOverrides} notify={notify}
+          onPurchase={(item, price) => logHistory('grocery_purchased', { name: item.name, category: item.category, store: item.store || 'Walmart', amount: item.amount, unit: item.unit, source: item.source, price })} />}
         {room === 'household' && <Household members={members} setMembers={setMembers} preferences={preferences} setPreferences={setPreferences} connection={connection} installPrompt={installPrompt} installed={installed} onInstall={async () => { if (!installPrompt) return; await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === 'accepted') setInstalled(true); setInstallPrompt(null) }} notify={notify} />}
+        {room === 'insights' && <Suspense fallback={<p className="muted">Loading insights…</p>}><Insights history={history} recipes={recipes} /></Suspense>}
       </main>
 
       <nav className="bottom-nav" aria-label="Main rooms">
@@ -292,7 +326,7 @@ function WeekPicker({ offset, onChange }: { offset: number; onChange: (n: number
   return <div className="week-picker"><button onClick={() => onChange(offset - 1)} aria-label="Previous week"><ChevronLeft size={18} /></button><span><b>{label}</b><small>{base.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – {end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></span><button onClick={() => onChange(offset + 1)} aria-label="Next week"><ChevronRight size={18} /></button></div>
 }
 
-function Hearth({ slots, recipes, members, onAdd, onDetail, onRemove, onLeftovers, onMove, onCooked, onBuildWeek, onShopping, groceryCount }: { slots: MealSlot[]; recipes: Recipe[]; members: Member[]; onAdd: (day: number, kind: MealKind) => void; onDetail: (recipe: Recipe) => void; onRemove: (id: string) => void; onLeftovers: (slot: MealSlot, servings: number) => void; onMove: (slot: MealSlot, direction: number) => void; onCooked: (recipe: Recipe) => void; onBuildWeek: () => void; onShopping: () => void; groceryCount: number }) {
+function Hearth({ slots, recipes, members, onAdd, onDetail, onRemove, onLeftovers, onMove, onCooked, onBuildWeek, onShopping, groceryCount }: { slots: MealSlot[]; recipes: Recipe[]; members: Member[]; onAdd: (day: number, kind: MealKind) => void; onDetail: (recipe: Recipe) => void; onRemove: (id: string) => void; onLeftovers: (slot: MealSlot, servings: number) => void; onMove: (slot: MealSlot, direction: number) => void; onCooked: (recipe: Recipe, slot?: MealSlot) => void; onBuildWeek: () => void; onShopping: () => void; groceryCount: number }) {
   const [leftoverSlot, setLeftoverSlot] = useState<MealSlot | null>(null)
   const [remaining, setRemaining] = useState(2)
   return <>
@@ -307,7 +341,7 @@ function Hearth({ slots, recipes, members, onAdd, onDetail, onRemove, onLeftover
             <span className="meal-kind">{kind}</span>
             {!slot || !recipe ? <button className="empty-slot" onClick={() => onAdd(dayIndex, kind)}><Plus size={16} /> Add meal</button> : <>
               <button className="meal-main" onClick={() => onDetail(recipe)}><i style={{ background: recipe.color }} /><span><b>{recipe.title}</b><small><Clock3 size={13} /> {recipe.minutes} min · {slot.servings} servings</small></span></button>
-              <div className="meal-footer"><div className="avatar-stack">{slot.diners.slice(0, 4).map(id => { const m = members.find(x => x.id === id); return m ? <span key={id} style={{ background: m.color }}>{m.initials}</span> : null })}{slot.diners.length > 4 && <span>+{slot.diners.length - 4}</span>}</div><details><summary aria-label="Meal actions"><MoreHorizontal size={18} /></summary><div className="action-menu"><button onClick={() => onDetail(recipe)}>View recipe</button><button onClick={() => onCooked(recipe)}>Mark cooked</button><button onClick={() => onAdd(dayIndex, kind)}>Change meal</button><button disabled={dayIndex === 0} onClick={() => onMove(slot, -1)}>Move one day earlier</button><button disabled={dayIndex === 6} onClick={() => onMove(slot, 1)}>Move one day later</button><button onClick={() => { setLeftoverSlot(slot); setRemaining(2) }}>Save leftovers</button><button className="danger" onClick={() => onRemove(slot.id)}>Remove meal</button></div></details></div>
+              <div className="meal-footer"><div className="avatar-stack">{slot.diners.slice(0, 4).map(id => { const m = members.find(x => x.id === id); return m ? <span key={id} style={{ background: m.color }}>{m.initials}</span> : null })}{slot.diners.length > 4 && <span>+{slot.diners.length - 4}</span>}</div><details><summary aria-label="Meal actions"><MoreHorizontal size={18} /></summary><div className="action-menu"><button onClick={() => onDetail(recipe)}>View recipe</button><button onClick={() => onCooked(recipe, slot)}>Mark cooked</button><button onClick={() => onAdd(dayIndex, kind)}>Change meal</button><button disabled={dayIndex === 0} onClick={() => onMove(slot, -1)}>Move one day earlier</button><button disabled={dayIndex === 6} onClick={() => onMove(slot, 1)}>Move one day later</button><button onClick={() => { setLeftoverSlot(slot); setRemaining(2) }}>Save leftovers</button><button className="danger" onClick={() => onRemove(slot.id)}>Remove meal</button></div></details></div>
             </>}
           </div>
         })}
@@ -377,8 +411,9 @@ function Recipes({ recipes, setRecipes, members, preferences, pantry, onDetail, 
   </>
 }
 
-function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMissing, notify }: { pantry: PantryItem[]; setPantry: (value: PantryItem[] | ((r: PantryItem[]) => PantryItem[])) => void; recipes: Recipe[]; members: Member[]; onDetail: (recipe: Recipe) => void; onAdd: (recipe: Recipe) => void; onAddMissing: (recipe: Recipe, missing: Recipe['ingredients']) => void; notify: (s: string) => void }) {
+function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMissing, notify, onExpired, onUsed }: { pantry: PantryItem[]; setPantry: (value: PantryItem[] | ((r: PantryItem[]) => PantryItem[])) => void; recipes: Recipe[]; members: Member[]; onDetail: (recipe: Recipe) => void; onAdd: (recipe: Recipe) => void; onAddMissing: (recipe: Recipe, missing: Recipe['ingredients']) => void; notify: (s: string) => void; onExpired: (items: PantryItem[]) => void; onUsed: (items: PantryItem[]) => void }) {
   const [draft, setDraft] = useState<PantryItem[]>(pantry)
+  const expiredLoggedRef = useRef<Set<string>>(new Set())
   const [entry, setEntry] = useState('')
   const [search, setSearch] = useState('')
   const [scanning, setScanning] = useState(false)
@@ -396,7 +431,13 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
   const expiredCount = draft.filter(item => isExpired(item)).length
   const addFromBarcode = (name: string) => setDraft(current => [...current, parsePantryEntry(name)])
   const saveItemDetails = (id: string, patch: Partial<PantryItem>) => setDraft(all => all.map(x => x.id === id ? { ...x, ...patch } : x))
-  const clearExpired = () => { setDraft(all => all.filter(item => !isExpired(item))); notify('Expired items removed from the draft') }
+  const clearExpired = () => {
+    const expired = draft.filter(item => isExpired(item))
+    expired.forEach(item => expiredLoggedRef.current.add(item.id))
+    onExpired(expired)
+    setDraft(all => all.filter(item => !isExpired(item)))
+    notify('Expired items removed from the draft')
+  }
   const updateItem = (id: string, patch: Partial<PantryItem>) => setDraft(all => all.map(x => x.id === id ? { ...x, ...patch } : x))
   const deleteItem = (id: string) => setDraft(all => all.filter(x => x.id !== id))
   const addText = () => {
@@ -483,7 +524,14 @@ function Pantry({ pantry, setPantry, recipes, members, onDetail, onAdd, onAddMis
         {isOpen && <div className="inventory-list">{group.items.map(renderRow)}</div>}
       </div> })}
       {!visible.length && <p className="muted">No pantry items match “{search}”.</p>}
-      <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => { const confirmed = draft.filter(i => i.confirmed); setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed') }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
+      <div className="sticky-confirm"><p><b>Only confirmed (checked) items are saved.</b><span>{isDirty ? 'You have unsaved changes — tap Confirm snapshot to save them.' : 'This snapshot clears after your shopping cycle.'}</span></p><button className={`button gold ${isDirty ? 'pulse' : ''}`} onClick={() => {
+        const confirmed = draft.filter(i => i.confirmed)
+        const confirmedIds = new Set(confirmed.map(i => i.id))
+        const used = pantry.filter(old => !confirmedIds.has(old.id) && !expiredLoggedRef.current.has(old.id))
+        if (used.length) onUsed(used)
+        expiredLoggedRef.current = new Set()
+        setPantry(confirmed); setDraft(confirmed); notify('Pantry snapshot confirmed')
+      }}><WandSparkles size={18} /> Confirm snapshot{isDirty ? ' (unsaved changes)' : ''}</button></div></section></div>
     {editingItem && <PantryItemDialog item={editingItem} onSave={patch => saveItemDetails(editingItem.id, patch)} onDelete={() => { deleteItem(editingItem.id); setEditingItem(null) }} onClose={() => setEditingItem(null)} />}
     {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}><GripVertical size={14} />{drag.name}</div>}
     {drag && <QuickZoneMenu x={drag.anchorX} y={drag.anchorY} />}</>
@@ -604,18 +652,27 @@ function PantryItemDialog({ item, onSave, onDelete, onClose }: { item: PantryIte
   </div></div>
 }
 
-function Shopping({ items, planCount, setChecks, manualItems, setManualItems, setStoreOverrides, notify }: { items: GroceryItem[]; planCount: number; setChecks: (value: Record<string, boolean> | ((r: Record<string, boolean>) => Record<string, boolean>)) => void; manualItems: GroceryItem[]; setManualItems: (value: GroceryItem[] | ((r: GroceryItem[]) => GroceryItem[])) => void; setStoreOverrides: (value: Record<string, string> | ((r: Record<string, string>) => Record<string, string>)) => void; notify: (s: string) => void }) {
+function Shopping({ items, planCount, setChecks, manualItems, setManualItems, setStoreOverrides, notify, onPurchase }: { items: GroceryItem[]; planCount: number; setChecks: (value: Record<string, boolean> | ((r: Record<string, boolean>) => Record<string, boolean>)) => void; manualItems: GroceryItem[]; setManualItems: (value: GroceryItem[] | ((r: GroceryItem[]) => GroceryItem[])) => void; setStoreOverrides: (value: Record<string, string> | ((r: Record<string, string>) => Record<string, string>)) => void; notify: (s: string) => void; onPurchase: (item: GroceryItem, price: number | null) => void }) {
   const stores = ['Walmart', 'Farmers Market', 'Mercado']
   const [manual, setManual] = useState('')
+  const [prices, setPrices] = useState<Record<string, string>>({})
   const grouped = stores.reduce<Record<string, GroceryItem[]>>((acc, store) => ({ ...acc, [store]: items.filter(i => (i.store || 'Walmart') === store) }), {})
   const completed = items.filter(i => i.checked).length
-  const setChecked = (item: GroceryItem) => item.source === 'plan' ? setChecks(c => ({ ...c, [item.id]: !item.checked })) : setManualItems(all => all.map(x => x.id === item.id ? { ...x, checked: !x.checked } : x))
+  const setChecked = (item: GroceryItem) => {
+    const next = !item.checked
+    if (item.source === 'plan') setChecks(c => ({ ...c, [item.id]: next }))
+    else setManualItems(all => all.map(x => x.id === item.id ? { ...x, checked: next } : x))
+    if (next) {
+      const typed = parseFloat(prices[item.id])
+      onPurchase(item, Number.isFinite(typed) && typed > 0 ? typed : null)
+    }
+  }
   const changeStore = (item: GroceryItem, store: string) => item.source === 'plan' ? setStoreOverrides(s => ({ ...s, [item.name]: store })) : setManualItems(all => all.map(x => x.id === item.id ? { ...x, store } : x))
   const addManual = () => { if (!manual.trim()) return; setManualItems(all => [...all, { id: crypto.randomUUID(), name: manual.trim(), amount: 1, unit: 'each', category: 'Other', store: 'Walmart', checked: false, source: 'manual' }]); setManual(''); notify('Item added') }
   return <><div className="shopping-top card"><div className="progress-ring" style={{ '--progress': `${items.length ? completed / items.length * 360 : 0}deg` } as CSSProperties}><span>{completed}<small>of {items.length}</small></span></div><div><p className="eyebrow">Generated from this week</p><h2>{items.length - completed} things left to gather</h2><p>{planCount} recipe needs, pantry quantities already subtracted, plus household reminders.</p></div><button className="button" onClick={() => window.print()}><ListChecks size={18} /> Print list</button></div>
     <div className="notice secure"><Users size={18} /><span><b>Shared-list ready.</b> Demo changes stay on this device. With Neon connected, list changes can sync across household devices.</span></div>
     <div className="manual-add"><input value={manual} onChange={e => setManual(e.target.value)} onKeyDown={e => e.key === 'Enter' && addManual()} placeholder="Add grocery, household, or pet item" /><button className="button gold" onClick={addManual}><Plus size={18} /> Add</button></div>
-    <div className="store-columns">{stores.map(store => { const categories = grouped[store].reduce<Record<string, GroceryItem[]>>((acc, item) => { (acc[item.category] ||= []).push(item); return acc }, {}); return <section className="store-card" key={store}><header><div><p className="eyebrow">Store</p><h2>{store}</h2></div><span>{grouped[store].filter(i => !i.checked).length} left</span></header>{Object.entries(categories).map(([category, categoryItems]) => <div className="grocery-category" key={category}><h3>{category}</h3>{categoryItems.map(item => <div className={`grocery-row ${item.checked ? 'done' : ''}`} key={item.id}><button className="check-button" onClick={() => setChecked(item)}>{item.checked && <Check size={15} />}</button><div className="grocery-name"><b>{item.name}</b><small>{item.amount} {item.unit} · {item.source === 'plan' ? 'meal plan' : item.source}</small></div><select aria-label={`Store for ${item.name}`} value={item.store || 'Walmart'} onChange={e => changeStore(item, e.target.value)}>{stores.map(s => <option key={s}>{s}</option>)}</select>{item.source !== 'plan' && <button className="plain-icon" onClick={() => setManualItems(all => all.filter(x => x.id !== item.id))}><X size={16} /></button>}</div>)}</div>)}</section> })}</div>
+    <div className="store-columns">{stores.map(store => { const categories = grouped[store].reduce<Record<string, GroceryItem[]>>((acc, item) => { (acc[item.category] ||= []).push(item); return acc }, {}); return <section className="store-card" key={store}><header><div><p className="eyebrow">Store</p><h2>{store}</h2></div><span>{grouped[store].filter(i => !i.checked).length} left</span></header>{Object.entries(categories).map(([category, categoryItems]) => <div className="grocery-category" key={category}><h3>{category}</h3>{categoryItems.map(item => <div className={`grocery-row ${item.checked ? 'done' : ''}`} key={item.id}><button className="check-button" onClick={() => setChecked(item)}>{item.checked && <Check size={15} />}</button><div className="grocery-name"><b>{item.name}</b><small>{item.amount} {item.unit} · {item.source === 'plan' ? 'meal plan' : item.source}</small></div><input className="price-input" type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Price paid for ${item.name}`} placeholder="$" value={prices[item.id] || ''} onChange={e => setPrices(p => ({ ...p, [item.id]: e.target.value }))} /><select aria-label={`Store for ${item.name}`} value={item.store || 'Walmart'} onChange={e => changeStore(item, e.target.value)}>{stores.map(s => <option key={s}>{s}</option>)}</select>{item.source !== 'plan' && <button className="plain-icon" onClick={() => setManualItems(all => all.filter(x => x.id !== item.id))}><X size={16} /></button>}</div>)}</div>)}</section> })}</div>
     <div className="walmart-handoff"><div className="walmart-mark">✦</div><div><p className="eyebrow">Walmart handoff</p><h2>Search your remaining Walmart items</h2><p>Opens product search in a new tab. This first release does not claim to fill a cart automatically.</p></div><a className="button gold" target="_blank" rel="noreferrer" href={`https://www.walmart.com/search?q=${encodeURIComponent(grouped.Walmart.filter(i => !i.checked).map(i => i.name).slice(0, 8).join(' '))}`}>Open Walmart search <ExternalLink size={17} /></a></div>
   </>
 }

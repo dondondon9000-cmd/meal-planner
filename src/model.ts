@@ -1,5 +1,9 @@
 export type MealKind = 'Breakfast' | 'Lunch' | 'Dinner'
-export type Room = 'hearth' | 'recipes' | 'pantry' | 'shopping' | 'household'
+export type Room = 'hearth' | 'recipes' | 'pantry' | 'shopping' | 'household' | 'insights'
+
+export type HistoryEventType = 'meal_cooked' | 'grocery_purchased' | 'pantry_expired' | 'pantry_used'
+export type HistoryEvent = { id: string; type: HistoryEventType; payload: Record<string, unknown>; occurredAt: string }
+export const historyEventTypes: HistoryEventType[] = ['meal_cooked', 'grocery_purchased', 'pantry_expired', 'pantry_used']
 
 export type Member = {
   id: string
@@ -278,7 +282,7 @@ export function parseAmount(value: string) {
   return Number.isFinite(number) && number > 0 ? number : 1
 }
 
-function categoryFor(name: string) {
+export function categoryFor(name: string) {
   const value = normalizeName(name)
   if (/chicken|beef|pork|turkey|sausage|fish|salmon|shrimp/.test(value)) return 'Meat'
   if (/milk|cheese|cream|yogurt|butter|egg/.test(value)) return 'Dairy'
@@ -286,6 +290,12 @@ function categoryFor(name: string) {
   if (/apple|onion|garlic|carrot|potato|tomato|pepper|spinach|lettuce|cabbage|lime|lemon|avocado|herb|basil|cilantro/.test(value)) return 'Produce'
   return 'Pantry'
 }
+
+// Fixed order for the Insights page's categorical charts - a grocery/pantry item's
+// category falls into one of these eight buckets, each mapped to one validated
+// chart color slot (see Insights.tsx). The order itself carries no meaning; it's
+// just held fixed so a given category always reads as the same color everywhere.
+export const insightCategoryOrder = ['Produce', 'Dairy', 'Meat', 'Bakery', 'Pantry', 'Household', 'Pet', 'Other'] as const
 
 export function parseIngredientLine(line: string): Ingredient {
   const clean = line.trim().replace(/^[-•]\s*/, '')
